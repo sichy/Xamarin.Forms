@@ -1,9 +1,11 @@
 using System;
 using System.ComponentModel;
 using System.Drawing;
+using System.Threading.Tasks;
 using Foundation;
 using UIKit;
 using Xamarin.Forms.Internals;
+using Uri = System.Uri;
 
 namespace Xamarin.Forms.Platform.iOS
 {
@@ -37,6 +39,7 @@ namespace Xamarin.Forms.Platform.iOS
 			Element = element;
 			Element.PropertyChanged += HandlePropertyChanged;
 			WebView.EvalRequested += OnEvalRequested;
+			WebView.EvaluateJavaScriptRequested += OnEvaluateJavaScriptRequested;
 			WebView.GoBackRequested += OnGoBackRequested;
 			WebView.GoForwardRequested += OnGoForwardRequested;
 			Delegate = new CustomWebViewDelegate(this);
@@ -79,7 +82,10 @@ namespace Xamarin.Forms.Platform.iOS
 
 		public void LoadUrl(string url)
 		{
-			LoadRequest(new NSUrlRequest(new NSUrl(url)));
+			var uri = new Uri(url);
+			var safeHostUri = new Uri($"{uri.Scheme}://{uri.Authority}", UriKind.Absolute);
+			var safeRelativeUri = new Uri($"{uri.PathAndQuery}{uri.Fragment}", UriKind.Relative);
+			LoadRequest(new NSUrlRequest(new Uri(safeHostUri, safeRelativeUri)));
 		}
 
 		public override void LayoutSubviews()
@@ -99,6 +105,7 @@ namespace Xamarin.Forms.Platform.iOS
 
 				Element.PropertyChanged -= HandlePropertyChanged;
 				WebView.EvalRequested -= OnEvalRequested;
+				WebView.EvaluateJavaScriptRequested -= OnEvaluateJavaScriptRequested;
 				WebView.GoBackRequested -= OnGoBackRequested;
 				WebView.GoForwardRequested -= OnGoForwardRequested;
 
@@ -136,6 +143,16 @@ namespace Xamarin.Forms.Platform.iOS
 		void OnEvalRequested(object sender, EvalRequested eventArg)
 		{
 			EvaluateJavascript(eventArg.Script);
+		}
+
+		async Task<string> OnEvaluateJavaScriptRequested(string script)
+		{
+			var tcr = new TaskCompletionSource<string>();
+			var task = tcr.Task;
+
+			Device.BeginInvokeOnMainThread(() => { tcr.SetResult(EvaluateJavascript(script)); });
+
+			return await task.ConfigureAwait(false);
 		}
 
 		void OnGoBackRequested(object sender, EventArgs eventArgs)

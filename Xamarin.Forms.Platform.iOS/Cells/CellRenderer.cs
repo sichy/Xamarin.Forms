@@ -12,6 +12,8 @@ namespace Xamarin.Forms.Platform.iOS
 
 		public virtual UITableViewCell GetCell(Cell item, UITableViewCell reusableCell, UITableView tv)
 		{
+			Performance.Start(out string reference);
+
 			var tvc = reusableCell as CellTableViewCell ?? new CellTableViewCell(UITableViewCellStyle.Default, item.GetType().FullName);
 
 			tvc.Cell = item;
@@ -21,7 +23,14 @@ namespace Xamarin.Forms.Platform.iOS
 			tvc.TextLabel.Text = item.ToString();
 
 			UpdateBackground(tvc, item);
+
+			Performance.Stop(reference);
 			return tvc;
+		}
+
+		public virtual void SetBackgroundColor(UITableViewCell tableViewCell, Cell cell, UIColor color)
+		{
+			tableViewCell.BackgroundColor = color;
 		}
 
 		protected void UpdateBackground(UITableViewCell tableViewCell, Cell cell)
@@ -29,7 +38,7 @@ namespace Xamarin.Forms.Platform.iOS
 			if (cell.GetIsGroupHeader<ItemsView<Cell>, Cell>())
 			{
 				if (UIDevice.CurrentDevice.CheckSystemVersion(7, 0))
-					tableViewCell.BackgroundColor = new UIColor(247f / 255f, 247f / 255f, 247f / 255f, 1);
+					SetBackgroundColor(tableViewCell, cell, new UIColor(247f / 255f, 247f / 255f, 247f / 255f, 1));
 			}
 			else
 			{
@@ -40,7 +49,7 @@ namespace Xamarin.Forms.Platform.iOS
 				if (element != null)
 					bgColor = element.BackgroundColor == Color.Default ? bgColor : element.BackgroundColor.ToUIColor();
 
-				tableViewCell.BackgroundColor = bgColor;
+				SetBackgroundColor(tableViewCell, cell, bgColor);
 			}
 		}
 

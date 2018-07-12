@@ -7,8 +7,8 @@ using Xamarin.Forms;
 
 #if __ANDROID__
 using Xamarin.Forms.Platform.Android;
-#elif WINDOWS_PHONE || WINDOWS_PHONE_APP
-using Xamarin.Forms.Platform.WinPhone;
+#elif TIZEN4_0
+using Xamarin.Forms.Platform.Tizen;
 #elif __IOS__
 using Xamarin.Forms.Platform.iOS;
 #endif
@@ -22,7 +22,7 @@ namespace Xamarin.Forms.Platform
 		}
 	}
 
-#if !WINDOWS_PHONE && !WINDOWS_PHONE_APP
+#if !WINDOWS_PHONE && !WINDOWS_PHONE_APP && !TIZEN4_0
 	[RenderWith(typeof(BoxRenderer))]
 #else
 	[RenderWith (typeof(BoxViewRenderer))]
@@ -35,14 +35,14 @@ namespace Xamarin.Forms.Platform
 	[RenderWith (typeof (EditorRenderer))]
 	internal class _EditorRenderer { }
 #if __ANDROID__
-	[RenderWith (typeof (Xamarin.Forms.Platform.Android.FastRenderers.LabelRenderer))]
+	[RenderWith(typeof(Xamarin.Forms.Platform.Android.LabelRenderer))]
 #else
 	[RenderWith (typeof (LabelRenderer))]
 #endif
 	internal class _LabelRenderer { }
 
 #if __ANDROID__
-	[RenderWith(typeof(Xamarin.Forms.Platform.Android.FastRenderers.ImageRenderer))]
+	[RenderWith(typeof(Xamarin.Forms.Platform.Android.ImageRenderer))]
 #else
 	[RenderWith (typeof (ImageRenderer))]
 #endif
@@ -93,7 +93,7 @@ namespace Xamarin.Forms.Platform
 	[RenderWith (typeof (FrameRenderer))]
 	internal class _FrameRenderer { }
 
-#if !WINDOWS_PHONE && !WINDOWS_PHONE_APP
+#if !WINDOWS_PHONE && !WINDOWS_PHONE_APP && !TIZEN4_0
 	[RenderWith (typeof (NavigationMenuRenderer))]
 	internal class _NavigationMenuRenderer { }
 
@@ -104,14 +104,14 @@ namespace Xamarin.Forms.Platform
 	
 	internal class _OpenGLViewRenderer { }
 
-#if !WINDOWS_PHONE && !WINDOWS_PHONE_APP
+#if !WINDOWS_PHONE && !WINDOWS_PHONE_APP && !TIZEN4_0
 	[RenderWith (typeof (TabbedRenderer))]
 #else
 	[RenderWith (typeof (TabbedPageRenderer))]
 #endif
 	internal class _TabbedPageRenderer { }
 
-#if !WINDOWS_PHONE && !WINDOWS_PHONE_APP
+#if !WINDOWS_PHONE && !WINDOWS_PHONE_APP && !TIZEN4_0
 	[RenderWith (typeof (NavigationRenderer))]
 #else
 	[RenderWith (typeof (NavigationPageRenderer))]
@@ -124,8 +124,10 @@ namespace Xamarin.Forms.Platform
 	[RenderWith (typeof (PageRenderer))]
 	internal class _PageRenderer { }
 
-#if !__IOS__
+#if !__IOS__ && !TIZEN4_0
 	[RenderWith (typeof (MasterDetailRenderer))]
+#elif TIZEN4_0
+	[RenderWith (typeof(MasterDetailPageRenderer))]
 #else
 	[RenderWith (typeof (PhoneMasterDetailRenderer))]
 #endif

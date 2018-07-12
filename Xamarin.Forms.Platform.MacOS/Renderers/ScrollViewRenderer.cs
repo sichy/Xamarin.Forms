@@ -1,4 +1,4 @@
-﻿﻿using System;
+﻿using System;
 using System.ComponentModel;
 using AppKit;
 using RectangleF = CoreGraphics.CGRect;
@@ -21,9 +21,10 @@ namespace Xamarin.Forms.Platform.MacOS
 		{
 			ContentView = new FlippedClipView();
 			DrawsBackground = false;
+			AutohidesScrollers = true;
 			ContentView.PostsBoundsChangedNotifications = false;
 			NSNotificationCenter.DefaultCenter.AddObserver(this, new Selector(nameof(UpdateScrollPosition)), BoundsChangedNotification, ContentView);
-			HasVerticalScroller = true;
+			UpdateOrientation();
 		}
 
 		ScrollView ScrollView => Element as ScrollView;
@@ -47,13 +48,13 @@ namespace Xamarin.Forms.Platform.MacOS
 
 			if (oldElement != null)
 			{
-				oldElement.PropertyChanged -= HandlePropertyChanged;
+				oldElement.PropertyChanged -= OnElementPropertyChanged;
 				((ScrollView)oldElement).ScrollToRequested -= OnScrollToRequested;
 			}
 
 			if (element != null)
 			{
-				element.PropertyChanged += HandlePropertyChanged;
+				element.PropertyChanged += OnElementPropertyChanged;
 				((ScrollView)element).ScrollToRequested += OnScrollToRequested;
 				if (_tracker == null)
 				{
@@ -68,9 +69,14 @@ namespace Xamarin.Forms.Platform.MacOS
 
 				UpdateContentSize();
 				UpdateBackgroundColor();
+				UpdateVerticalScrollBarVisibility();
+				UpdateHorizontalScrollBarVisibility();
 
-				OnElementChanged(new VisualElementChangedEventArgs(oldElement, element));
+				UpdateOrientation();
+				RaiseElementChanged(new VisualElementChangedEventArgs(oldElement, element));
 			}
+
+			ResetNativeNonScroll();
 		}
 
 		public void SetElementSize(Size size)
@@ -111,7 +117,7 @@ namespace Xamarin.Forms.Platform.MacOS
 			base.Dispose(disposing);
 		}
 
-		void OnElementChanged(VisualElementChangedEventArgs e)
+		void RaiseElementChanged(VisualElementChangedEventArgs e)
 		{
 			ElementChanged?.Invoke(this, e);
 		}
@@ -144,12 +150,46 @@ namespace Xamarin.Forms.Platform.MacOS
 			}
 		}
 
-		void HandlePropertyChanged(object sender, PropertyChangedEventArgs e)
+		protected virtual void OnElementPropertyChanged(object sender, PropertyChangedEventArgs e)
 		{
 			if (e.PropertyName == ScrollView.ContentSizeProperty.PropertyName)
 				UpdateContentSize();
 			else if (e.PropertyName == VisualElement.BackgroundColorProperty.PropertyName)
 				UpdateBackgroundColor();
+			else if (e.PropertyName == ScrollView.VerticalScrollBarVisibilityProperty.PropertyName)
+				UpdateVerticalScrollBarVisibility();
+			else if (e.PropertyName == ScrollView.HorizontalScrollBarVisibilityProperty.PropertyName)
+				UpdateHorizontalScrollBarVisibility();
+			else if (e.PropertyName == ScrollView.OrientationProperty.PropertyName)
+				UpdateOrientation();
+		}
+
+		private void UpdateOrientation()
+		{
+			if (ScrollView == null)
+				return;
+
+			switch (ScrollView.Orientation)
+			{
+				case ScrollOrientation.Both:
+					{
+						HasHorizontalScroller = true;
+						HasVerticalScroller = true;
+						break;
+					}
+				case ScrollOrientation.Horizontal:
+					{
+						HasVerticalScroller = false;
+						HasHorizontalScroller = true;
+						break;
+					}
+				case ScrollOrientation.Vertical:
+					{
+						HasHorizontalScroller = false;
+						HasVerticalScroller = true;
+						break;
+					}
+			}
 		}
 
 		void OnNativeControlUpdated(object sender, EventArgs eventArgs)
@@ -198,12 +238,24 @@ namespace Xamarin.Forms.Platform.MacOS
 			ResetNativeNonScroll();
 		}
 
+		void UpdateVerticalScrollBarVisibility()
+		{
+			var verticalScrollBarVisibility = ScrollView.VerticalScrollBarVisibility;
+
+			HasVerticalScroller = (verticalScrollBarVisibility == ScrollBarVisibility.Always || verticalScrollBarVisibility == ScrollBarVisibility.Default);
+		}
+
+		void UpdateHorizontalScrollBarVisibility()
+		{
+			HasHorizontalScroller = (ScrollView.HorizontalScrollBarVisibility == ScrollBarVisibility.Always);
+		}
+
 		private bool ResetNativeNonScroll( )
 		{
-			if (ScrollView == null || ContentView == null)
+			if (ContentView == null || ScrollView == null || ScrollView.Content == null)
 				return false;
 
-			if (ScrollView.ScrollY <= 0.0f && ContentView.DocumentVisibleRect().Location.Y > 0.0f)
+			if (Math.Abs(ScrollView.ScrollY) < 0.001 && Math.Abs(ScrollView.ScrollX) < 0.001 && ScrollView.Content.Height > ScrollView.Height)
 			{
 				ContentView.ScrollToPoint(new CoreGraphics.CGPoint(0, 0));
 				return true;
@@ -222,8 +274,8 @@ namespace Xamarin.Forms.Platform.MacOS
 			{
 				CoreGraphics.CGPoint location = ContentView.DocumentVisibleRect().Location;
 
-				if (location.Y > -1)
-					ScrollView.SetScrolledPosition(Math.Max(0, location.X), Math.Max(0, ContentView.Frame.Height - location.Y));
+				if (location.Y > -1 && ScrollView.Height >= 0)
+					ScrollView.SetScrolledPosition(Math.Max(0, location.X), Math.Max(0, ScrollView.ContentSize.Height - ScrollView.Height - location.Y));
 			}
 			else
 				ResetNativeNonScroll();

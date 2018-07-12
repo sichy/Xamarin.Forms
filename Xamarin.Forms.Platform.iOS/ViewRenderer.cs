@@ -5,10 +5,9 @@ using RectangleF = CoreGraphics.CGRect;
 using SizeF = CoreGraphics.CGSize;
 
 #if __MOBILE__
-using UIKit;
-using NativeView = UIKit.UIView;
 using NativeColor = UIKit.UIColor;
 using NativeControl = UIKit.UIControl;
+using NativeView = UIKit.UIView;
 
 namespace Xamarin.Forms.Platform.iOS
 #else
@@ -31,6 +30,11 @@ namespace Xamarin.Forms.Platform.MacOS
 		bool? _defaultIsAccessibilityElement;
 #endif
 		NativeColor _defaultColor;
+
+		protected virtual TNativeView CreateNativeControl()
+		{
+			return default(TNativeView);
+		}
 
 		public TNativeView Control { get; private set; }
 #if __MOBILE__
@@ -96,6 +100,7 @@ namespace Xamarin.Forms.Platform.MacOS
 			}
 
 			UpdateIsEnabled();
+			UpdateFlowDirection();
 		}
 
 		protected override void OnElementPropertyChanged(object sender, PropertyChangedEventArgs e)
@@ -106,6 +111,8 @@ namespace Xamarin.Forms.Platform.MacOS
 					UpdateIsEnabled();
 				else if (e.PropertyName == VisualElement.BackgroundColorProperty.PropertyName)
 					SetBackgroundColor(Element.BackgroundColor);
+				else if (e.PropertyName == VisualElement.FlowDirectionProperty.PropertyName)
+					UpdateFlowDirection();
 			}
 
 			base.OnElementPropertyChanged(sender, e);
@@ -198,6 +205,12 @@ namespace Xamarin.Forms.Platform.MacOS
 		{
 #if __MOBILE__
 			_defaultColor = uiview.BackgroundColor;
+
+			// UIKit UIViews created via storyboard default IsAccessibilityElement to true, BUT
+			// UIViews created programmatically default IsAccessibilityElement to false.
+			// We need to default to true to allow all elements to be accessible by default and
+			// allow users to override this later via AutomationProperties.IsInAccessibleTree
+			uiview.IsAccessibilityElement = true;
 #else
 			uiview.WantsLayer = true;
 			_defaultColor = uiview.Layer.BackgroundColor;
@@ -208,6 +221,8 @@ namespace Xamarin.Forms.Platform.MacOS
 				SetBackgroundColor(Element.BackgroundColor);
 
 			UpdateIsEnabled();
+
+			UpdateFlowDirection();
 
 			AddSubview(uiview);
 		}
@@ -228,6 +243,11 @@ namespace Xamarin.Forms.Platform.MacOS
 			if (uiControl == null)
 				return;
 			uiControl.Enabled = Element.IsEnabled;
+		}
+
+		void UpdateFlowDirection()
+		{
+			Control.UpdateFlowDirection(Element);
 		}
 
 		void ViewOnFocusChangeRequested(object sender, VisualElement.FocusRequestArgs focusRequestArgs)

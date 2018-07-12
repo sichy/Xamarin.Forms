@@ -13,18 +13,16 @@ using Xamarin.Forms.Internals;
 
 namespace Xamarin.Forms.Platform.Android
 {
-	public class FormsApplicationActivity : Activity, IDeviceInfoProvider, IStartActivityForResult
+	public class FormsApplicationActivity : Activity, IDeviceInfoProvider
 	{
 		public delegate bool BackButtonPressedEventHandler(object sender, EventArgs e);
-
-		readonly ConcurrentDictionary<int, Action<Result, Intent>> _activityResultCallbacks = new ConcurrentDictionary<int, Action<Result, Intent>>();
 
 		Application _application;
 		Platform _canvas;
 		AndroidApplicationLifecycleState _currentState;
 		LinearLayout _layout;
 
-		int _nextActivityResultCallbackKey;
+		PowerSaveModeBroadcastReceiver _powerSaveModeBroadcastReceiver;
 
 		AndroidApplicationLifecycleState _previousState;
 
@@ -32,30 +30,14 @@ namespace Xamarin.Forms.Platform.Android
 		{
 			_previousState = AndroidApplicationLifecycleState.Uninitialized;
 			_currentState = AndroidApplicationLifecycleState.Uninitialized;
+			PopupManager.Subscribe(this);
+
+			// We seem to get a different color from the theme than we use by default
+			// Override to use the old color
+			Forms.ColorButtonNormalOverride = Color.FromHex("#5a595b");
 		}
 
 		public event EventHandler ConfigurationChanged;
-
-		int IStartActivityForResult.RegisterActivityResultCallback(Action<Result, Intent> callback)
-		{
-			int requestCode = _nextActivityResultCallbackKey;
-
-			while (!_activityResultCallbacks.TryAdd(requestCode, callback))
-			{
-				_nextActivityResultCallbackKey += 1;
-				requestCode = _nextActivityResultCallbackKey;
-			}
-
-			_nextActivityResultCallbackKey += 1;
-
-			return requestCode;
-		}
-
-		void IStartActivityForResult.UnregisterActivityResultCallback(int requestCode)
-		{
-			Action<Result, Intent> callback;
-			_activityResultCallbacks.TryRemove(requestCode, out callback);
-		}
 
 		public static event BackButtonPressedEventHandler BackPressed;
 
@@ -112,17 +94,23 @@ namespace Xamarin.Forms.Platform.Android
 
 			application.PropertyChanged += AppOnPropertyChanged;
 
+			if (application?.MainPage != null)
+			{
+				var iver = Platform.GetRenderer(application.MainPage);
+				if (iver != null)
+				{
+					iver.Dispose();
+					application.MainPage.ClearValue(Platform.RendererProperty);
+				}
+			}
+
 			SetMainPage();
 		}
 
 		protected override void OnActivityResult(int requestCode, Result resultCode, Intent data)
 		{
 			base.OnActivityResult(requestCode, resultCode, data);
-
-			Action<Result, Intent> callback;
-
-			if (_activityResultCallbacks.TryGetValue(requestCode, out callback))
-				callback(resultCode, data);
+			ActivityResultCallbackRegistry.InvokeCallback(requestCode, resultCode, data);
 		}
 
 		protected override void OnCreate(Bundle savedInstanceState)
@@ -139,6 +127,12 @@ namespace Xamarin.Forms.Platform.Android
 			_previousState = _currentState;
 			_currentState = AndroidApplicationLifecycleState.OnCreate;
 
+			if (Forms.IsLollipopOrNewer)
+			{
+				// Listen for the device going into power save mode so we can handle animations being disabled	
+				_powerSaveModeBroadcastReceiver = new PowerSaveModeBroadcastReceiver();
+			}
+
 			OnStateChanged();
 		}
 
@@ -147,9 +141,7 @@ namespace Xamarin.Forms.Platform.Android
 			// may never be called
 			base.OnDestroy();
 
-			MessagingCenter.Unsubscribe<Page, AlertArguments>(this, Page.AlertSignalName);
-			MessagingCenter.Unsubscribe<Page, bool>(this, Page.BusySetSignalName);
-			MessagingCenter.Unsubscribe<Page, ActionSheetArguments>(this, Page.ActionSheetSignalName);
+			PopupManager.Unsubscribe(this);
 
 			if (_canvas != null)
 				((IDisposable)_canvas).Dispose();
@@ -167,6 +159,12 @@ namespace Xamarin.Forms.Platform.Android
 
 			_previousState = _currentState;
 			_currentState = AndroidApplicationLifecycleState.OnPause;
+
+			if (Forms.IsLollipopOrNewer)
+			{
+				// Don't listen for power save mode changes while we're paused
+				UnregisterReceiver(_powerSaveModeBroadcastReceiver);
+			}
 
 			OnStateChanged();
 		}
@@ -188,6 +186,13 @@ namespace Xamarin.Forms.Platform.Android
 
 			_previousState = _currentState;
 			_currentState = AndroidApplicationLifecycleState.OnResume;
+
+			if (Forms.IsLollipopOrNewer)
+			{
+				// Start listening for power save mode changes
+				RegisterReceiver(_powerSaveModeBroadcastReceiver, new IntentFilter(
+					PowerManager.ActionPowerSaveModeChanged));
+			}
 
 			OnStateChanged();
 		}
@@ -241,48 +246,7 @@ namespace Xamarin.Forms.Platform.Android
 				return;
 			}
 
-			var busyCount = 0;
-			MessagingCenter.Subscribe(this, Page.BusySetSignalName, (Page sender, bool enabled) =>
-			{
-				busyCount = Math.Max(0, enabled ? busyCount + 1 : busyCount - 1);
-				UpdateProgressBarVisibility(busyCount > 0);
-			});
-
-			UpdateProgressBarVisibility(busyCount > 0);
-
-			MessagingCenter.Subscribe(this, Page.AlertSignalName, (Page sender, AlertArguments arguments) =>
-			{
-				AlertDialog alert = new AlertDialog.Builder(this).Create();
-				alert.SetTitle(arguments.Title);
-				alert.SetMessage(arguments.Message);
-				if (arguments.Accept != null)
-					alert.SetButton((int)DialogButtonType.Positive, arguments.Accept, (o, args) => arguments.SetResult(true));
-				alert.SetButton((int)DialogButtonType.Negative, arguments.Cancel, (o, args) => arguments.SetResult(false));
-				alert.CancelEvent += (o, args) => { arguments.SetResult(false); };
-				alert.Show();
-			});
-
-			MessagingCenter.Subscribe(this, Page.ActionSheetSignalName, (Page sender, ActionSheetArguments arguments) =>
-			{
-				var builder = new AlertDialog.Builder(this);
-				builder.SetTitle(arguments.Title);
-				string[] items = arguments.Buttons.ToArray();
-				builder.SetItems(items, (sender2, args) => { arguments.Result.TrySetResult(items[args.Which]); });
-
-				if (arguments.Cancel != null)
-					builder.SetPositiveButton(arguments.Cancel, delegate { arguments.Result.TrySetResult(arguments.Cancel); });
-
-				if (arguments.Destruction != null)
-					builder.SetNegativeButton(arguments.Destruction, delegate { arguments.Result.TrySetResult(arguments.Destruction); });
-
-				AlertDialog dialog = builder.Create();
-				builder.Dispose();
-				//to match current functionality of renderer we set cancelable on outside
-				//and return null
-				dialog.SetCanceledOnTouchOutside(true);
-				dialog.CancelEvent += (sender3, e) => { arguments.SetResult(null); };
-				dialog.Show();
-			});
+			PopupManager.ResetBusyCount(this);
 
 			_canvas = new Platform(this);
 			if (_application != null)
@@ -291,7 +255,7 @@ namespace Xamarin.Forms.Platform.Android
 			_layout.AddView(_canvas.GetViewGroup());
 		}
 
-		async void OnStateChanged()
+		void OnStateChanged()
 		{
 			if (_application == null)
 				return;
@@ -301,7 +265,7 @@ namespace Xamarin.Forms.Platform.Android
 			else if (_previousState == AndroidApplicationLifecycleState.OnStop && _currentState == AndroidApplicationLifecycleState.OnRestart)
 				_application.SendResume();
 			else if (_previousState == AndroidApplicationLifecycleState.OnPause && _currentState == AndroidApplicationLifecycleState.OnStop)
-				await _application.SendSleepAsync();
+				_application.SendSleep();
 		}
 
 		void SetMainPage()
@@ -329,16 +293,6 @@ namespace Xamarin.Forms.Platform.Android
 			}
 
 			Window.SetSoftInputMode(adjust);
-		}
-
-		void UpdateProgressBarVisibility(bool isBusy)
-		{
-			if (!Forms.SupportsProgress)
-				return;
-#pragma warning disable 612, 618
-			SetProgressBarIndeterminate(true);
-			SetProgressBarIndeterminateVisibility(isBusy);
-#pragma warning restore 612, 618
 		}
 
 		internal class DefaultApplication : Application

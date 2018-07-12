@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Threading;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using Xamarin.Forms.Internals;
@@ -15,16 +16,14 @@ namespace Xamarin.Forms
 		readonly Lazy<PlatformConfigurationRegistry<Application>> _platformConfigurationRegistry;
 
 		IAppIndexingProvider _appIndexProvider;
-		bool _isSaving;
 
 		ReadOnlyCollection<Element> _logicalChildren;
 
 		Page _mainPage;
 
-		ResourceDictionary _resources;
-		bool _saveAgain;
+		static SemaphoreSlim SaveSemaphore = new SemaphoreSlim(1, 1);
 
-		protected Application()
+		public Application()
 		{
 			var f = false;
 			if (f)
@@ -35,6 +34,11 @@ namespace Xamarin.Forms
 			SystemResources = DependencyService.Get<ISystemResourcesProvider>().GetSystemResources();
 			SystemResources.ValuesChanged += OnParentResourcesChanged;
 			_platformConfigurationRegistry = new Lazy<PlatformConfigurationRegistry<Application>>(() => new PlatformConfigurationRegistry<Application>(this));
+		}
+
+		public void Quit()
+		{
+			Device.PlatformServices?.QuitApplication();
 		}
 
 		public IAppLinks AppLinks
@@ -55,7 +59,7 @@ namespace Xamarin.Forms
 		public static Application Current
 		{
 			get { return s_current; }
-			set 
+			set
 			{
 				if (s_current == value)
 					return;
@@ -129,9 +133,20 @@ namespace Xamarin.Forms
 			_appIndexProvider = provider;
 		}
 
+		ResourceDictionary _resources;
+		bool IResourcesProvider.IsResourcesCreated => _resources != null;
+
 		public ResourceDictionary Resources
 		{
-			get { return _resources; }
+			get
+			{
+				if (_resources != null)
+					return _resources;
+
+				_resources = new ResourceDictionary();
+				((IResourceDictionary)_resources).ValuesChanged += OnResourcesChanged;
+				return _resources;
+			}
 			set
 			{
 				if (_resources == value)
@@ -155,12 +170,46 @@ namespace Xamarin.Forms
 
 		public event EventHandler<ModalPushingEventArgs> ModalPushing;
 
+		public event EventHandler<Page> PageAppearing;
+
+		public event EventHandler<Page> PageDisappearing;
+
+
+		async void SaveProperties()
+		{
+			try
+			{
+				await SetPropertiesAsync();
+			}
+			catch (Exception exc)
+			{
+				Internals.Log.Warning(nameof(Application), $"Exception while saving Application Properties: {exc}");
+			}
+		}
+
 		public async Task SavePropertiesAsync()
 		{
 			if (Device.IsInvokeRequired)
-				Device.BeginInvokeOnMainThread(async () => await SetPropertiesAsync());
+			{
+				Device.BeginInvokeOnMainThread(SaveProperties);
+			}
 			else
+			{
 				await SetPropertiesAsync();
+			}
+		}
+
+		// Don't use this unless there really is no better option
+		internal void SavePropertiesAsFireAndForget()
+		{
+			if (Device.IsInvokeRequired)
+			{
+				Device.BeginInvokeOnMainThread(SaveProperties);
+			}
+			else
+			{
+				SaveProperties();
+			}
 		}
 
 		public IPlatformElementConfiguration<T, Application> On<T>() where T : IConfigPlatform
@@ -203,7 +252,7 @@ namespace Xamarin.Forms
 
 		internal override void OnParentResourcesChanged(IEnumerable<KeyValuePair<string, object>> values)
 		{
-			if (Resources == null || Resources.Count == 0)
+			if (!((IResourcesProvider)this).IsResourcesCreated || Resources.Count == 0)
 			{
 				base.OnParentResourcesChanged(values);
 				return;
@@ -237,6 +286,13 @@ namespace Xamarin.Forms
 		}
 
 		[EditorBrowsable(EditorBrowsableState.Never)]
+		public void SendSleep()
+		{
+			OnSleep();
+			SavePropertiesAsFireAndForget();
+		}
+
+		[EditorBrowsable(EditorBrowsableState.Never)]
 		public Task SendSleepAsync()
 		{
 			OnSleep();
@@ -265,55 +321,43 @@ namespace Xamarin.Forms
 			return properties;
 		}
 
+		internal void OnPageAppearing(Page page)
+			=> PageAppearing?.Invoke(this, page);
+
+		internal void OnPageDisappearing(Page page)
+			=> PageDisappearing?.Invoke(this, page);
+
 		void OnModalPopped(Page modalPage)
-		{
-			EventHandler<ModalPoppedEventArgs> handler = ModalPopped;
-			if (handler != null)
-				handler(this, new ModalPoppedEventArgs(modalPage));
-		}
+			=> ModalPopped?.Invoke(this, new ModalPoppedEventArgs(modalPage));
 
 		bool OnModalPopping(Page modalPage)
 		{
-			EventHandler<ModalPoppingEventArgs> handler = ModalPopping;
 			var args = new ModalPoppingEventArgs(modalPage);
-			if (handler != null)
-				handler(this, args);
+			ModalPopping?.Invoke(this, args);
 			return args.Cancel;
 		}
 
 		void OnModalPushed(Page modalPage)
-		{
-			EventHandler<ModalPushedEventArgs> handler = ModalPushed;
-			if (handler != null)
-				handler(this, new ModalPushedEventArgs(modalPage));
-		}
+			=> ModalPushed?.Invoke(this, new ModalPushedEventArgs(modalPage));
 
 		void OnModalPushing(Page modalPage)
-		{
-			EventHandler<ModalPushingEventArgs> handler = ModalPushing;
-			if (handler != null)
-				handler(this, new ModalPushingEventArgs(modalPage));
-		}
+			=> ModalPushing?.Invoke(this, new ModalPushingEventArgs(modalPage));
 
 		void OnPopCanceled()
-		{
-			EventHandler handler = PopCanceled;
-			if (handler != null)
-				handler(this, EventArgs.Empty);
-		}
+			=> PopCanceled?.Invoke(this, EventArgs.Empty);
 
 		async Task SetPropertiesAsync()
 		{
-			if (_isSaving)
+			await SaveSemaphore.WaitAsync();
+			try
 			{
-				_saveAgain = true;
-				return;
-			}
-			_isSaving = true;
-			await DependencyService.Get<IDeserializer>().SerializePropertiesAsync(Properties);
-			if (_saveAgain)
 				await DependencyService.Get<IDeserializer>().SerializePropertiesAsync(Properties);
-			_isSaving = _saveAgain = false;
+			}
+			finally
+			{
+				SaveSemaphore.Release();
+			}
+
 		}
 
 		class NavigationImpl : NavigationProxy

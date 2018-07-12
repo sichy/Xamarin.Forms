@@ -1,4 +1,5 @@
 using System;
+using Xamarin.Forms.PlatformConfiguration.AndroidSpecific;
 
 namespace Xamarin.Forms.Platform.Android
 {
@@ -7,25 +8,19 @@ namespace Xamarin.Forms.Platform.Android
 		public static IVisualElementRenderer GetRenderer(this VisualElement self)
 		{
 			if (self == null)
-				throw new ArgumentNullException("self");
+				throw new ArgumentNullException(nameof(self));
 
 			IVisualElementRenderer renderer = Platform.GetRenderer(self);
 
 			return renderer;
 		}
 
-		public static bool ShouldBeMadeClickable(this View view)
+		internal static bool UseLegacyColorManagement<T>(this T element) where T : VisualElement, IElementConfiguration<T>
 		{
-			for (var i = 0; i < view.GestureRecognizers.Count; i++)
-			{
-				IGestureRecognizer gesture = view.GestureRecognizers[i];
-				if (gesture is TapGestureRecognizer || gesture is PinchGestureRecognizer || gesture is PanGestureRecognizer)
-				{
-					return true;
-				}
-			}
-
-			return false;
+			// Determine whether we're letting the VSM handle the colors or doing it the old way
+			// or disabling the legacy color management and doing it the old-old (pre 2.0) way
+			return !element.HasVisualStateGroups()
+					&& element.OnThisPlatform().GetIsLegacyColorModeEnabled();
 		}
 	}
 }

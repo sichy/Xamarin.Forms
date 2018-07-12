@@ -1,4 +1,6 @@
 ﻿using Xamarin.Forms.Controls.GalleryPages.PlatformSpecificsGalleries;
+using Xamarin.Forms.PlatformConfiguration;
+using Xamarin.Forms.PlatformConfiguration.iOSSpecific;
 
 namespace Xamarin.Forms.Controls
 {
@@ -8,6 +10,8 @@ namespace Xamarin.Forms.Controls
 
 		public PlatformSpecificsGallery()
 		{
+			
+			Title = "PlatformSpecificsGallery";
 			var mdpiOSButton = new Button { Text = "MasterDetailPage (iOS)" };
 			var mdpWindowsButton = new Button { Text = "MasterDetailPage (Windows)" };
 			var npiOSButton = new Button() { Text = "NavigationPage (iOS)" };
@@ -18,6 +22,10 @@ namespace Xamarin.Forms.Controls
 			var appAndroidButton = new Button() { Text = "Application (Android)" };
 			var tbAndroidButton = new Button { Text = "TabbedPage (Android)" };
 			var entryiOSButton = new Button() { Text = "Entry (iOS)" };
+			var entryAndroidButton = new Button() { Text = "Entry (Android)" };
+			var largeTitlesiOSButton = new Button() { Text = "Large Title (iOS)" };
+			var safeareaiOSButton = new Button() { Text = "SafeArea (iOS)" };
+			var modalformsheetiOSButton = new Button() { Text = "Modal FormSheet (iOS)" };
 
 			mdpiOSButton.Clicked += (sender, args) => { SetRoot(new MasterDetailPageiOS(new Command(RestoreOriginal))); };
 			mdpWindowsButton.Clicked += (sender, args) => { SetRoot(new MasterDetailPageWindows(new Command(RestoreOriginal))); };
@@ -29,11 +37,18 @@ namespace Xamarin.Forms.Controls
 			appAndroidButton.Clicked += (sender, args) => { SetRoot(new ApplicationAndroid(new Command(RestoreOriginal))); };
 			tbAndroidButton.Clicked += (sender, args) => { SetRoot(new TabbedPageAndroid(new Command(RestoreOriginal))); };
 			entryiOSButton.Clicked += (sender, args) => { Navigation.PushAsync(new EntryPageiOS()); };
-			
+			entryAndroidButton.Clicked += (sender, args) => { Navigation.PushAsync(new EntryPageAndroid()); };
+			largeTitlesiOSButton.Clicked += (sender, args) => { Navigation.PushAsync(new LargeTitlesPageiOS(new Command(RestoreOriginal))); };
+			safeareaiOSButton.Clicked += (sender, args) => { SetRoot(new SafeAreaPageiOS(new Command(RestoreOriginal), new Command<Page>(p => SetRoot(p)))); };
+			modalformsheetiOSButton.Clicked += async (sender, args) => { await Navigation.PushModalAsync(new ModalFormSheetPageiOS()); };
 
-			Content = new StackLayout
+			Content = new ScrollView
 			{
-				Children = { mdpiOSButton, mdpWindowsButton, npWindowsButton, tbiOSButton, tbWindowsButton, viselemiOSButton, appAndroidButton, tbAndroidButton, entryiOSButton }
+				Content = new StackLayout
+				{
+					Children = { mdpiOSButton, mdpWindowsButton, npWindowsButton, tbiOSButton, tbWindowsButton, viselemiOSButton,
+						appAndroidButton, tbAndroidButton, entryiOSButton, entryAndroidButton, largeTitlesiOSButton, safeareaiOSButton, modalformsheetiOSButton }
+				}
 			};
 		}
 

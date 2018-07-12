@@ -1,4 +1,5 @@
 using System;
+using Xamarin.Forms.Internals;
 
 #if __MOBILE__
 namespace Xamarin.Forms.Platform.iOS
@@ -13,16 +14,20 @@ namespace Xamarin.Forms.Platform.MacOS
 
 		bool _isDisposed;
 
-		IElementController ElementController => Renderer.Element as IElementController;
+		IElementController ElementController => _element;
 
-		public VisualElementPackager(IVisualElementRenderer renderer)
+		public VisualElementPackager(IVisualElementRenderer renderer) : this(renderer, null)
+		{
+		}
+
+		VisualElementPackager(IVisualElementRenderer renderer, VisualElement element)
 		{
 			if (renderer == null)
 				throw new ArgumentNullException(nameof(renderer));
 
 			Renderer = renderer;
 			renderer.ElementChanged += OnRendererElementChanged;
-			SetElement(null, renderer.Element);
+			SetElement(null, element ?? renderer.Element);
 		}
 
 		protected IVisualElementRenderer Renderer { get; set; }
@@ -49,6 +54,22 @@ namespace Xamarin.Forms.Platform.MacOS
 
 			if (disposing)
 			{
+				if (ElementController != null)
+				{
+					for (var i = 0; i < ElementController.LogicalChildren.Count; i++)
+					{
+						var child = ElementController.LogicalChildren[i] as VisualElement;
+						if (child == null)
+							continue;
+
+						var childRenderer = Platform.GetRenderer(child);
+						if (childRenderer == null)
+							continue;
+
+						childRenderer.Dispose();
+					}
+				}
+
 				SetElement(_element, null);
 				if (Renderer != null)
 				{
@@ -64,17 +85,27 @@ namespace Xamarin.Forms.Platform.MacOS
 		{
 			if (_isDisposed)
 				return;
+			Performance.Start(out string reference);
+			if (CompressedLayout.GetIsHeadless(view))
+			{
+				var packager = new VisualElementPackager(Renderer, view);
+				view.IsPlatformEnabled = true;
+				packager.Load();
+			}
+			else
+			{
+				var viewRenderer = Platform.CreateRenderer(view);
+				Platform.SetRenderer(view, viewRenderer);
 
-			var viewRenderer = Platform.CreateRenderer(view);
-			Platform.SetRenderer(view, viewRenderer);
+				var uiview = Renderer.NativeView;
+				uiview.AddSubview(viewRenderer.NativeView);
 
-			var uiview = Renderer.NativeView;
-			uiview.AddSubview(viewRenderer.NativeView);
+				if (Renderer.ViewController != null && viewRenderer.ViewController != null)
+					Renderer.ViewController.AddChildViewController(viewRenderer.ViewController);
 
-			if (Renderer.ViewController != null && viewRenderer.ViewController != null)
-				Renderer.ViewController.AddChildViewController(viewRenderer.ViewController);
-
-			EnsureChildrenOrder();
+				EnsureChildrenOrder();
+			}
+			Performance.Stop(reference);
 		}
 
 		protected virtual void OnChildRemoved(VisualElement view)
@@ -87,6 +118,8 @@ namespace Xamarin.Forms.Platform.MacOS
 
 			if (Renderer.ViewController != null && viewRenderer.ViewController != null)
 				viewRenderer.ViewController.RemoveFromParentViewController();
+
+			viewRenderer.Dispose();
 		}
 
 		void EnsureChildrenOrder()
@@ -139,6 +172,10 @@ namespace Xamarin.Forms.Platform.MacOS
 			if (oldElement == newElement)
 				return;
 
+			Performance.Start(out string reference);
+
+			_element = newElement;
+
 			if (oldElement != null)
 			{
 				oldElement.ChildAdded -= OnChildAdded;
@@ -165,14 +202,13 @@ namespace Xamarin.Forms.Platform.MacOS
 				}
 			}
 
-			_element = newElement;
-
 			if (newElement != null)
 			{
 				newElement.ChildAdded += OnChildAdded;
 				newElement.ChildRemoved += OnChildRemoved;
 				newElement.ChildrenReordered += UpdateChildrenOrder;
 			}
+			Performance.Stop(reference);
 		}
 
 		void UpdateChildrenOrder(object sender, EventArgs e)

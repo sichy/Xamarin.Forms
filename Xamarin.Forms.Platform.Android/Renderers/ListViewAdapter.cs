@@ -9,11 +9,13 @@ using Android.Widget;
 using AView = Android.Views.View;
 using AListView = Android.Widget.ListView;
 using Xamarin.Forms.Internals;
+using System.Collections;
 
 namespace Xamarin.Forms.Platform.Android
 {
 	internal class ListViewAdapter : CellAdapter
 	{
+		static readonly object DefaultItemTypeOrDataTemplate = new object();
 		const int DefaultGroupHeaderTemplateId = 0;
 		const int DefaultItemTemplateId = 1;
 
@@ -25,6 +27,7 @@ namespace Xamarin.Forms.Platform.Android
 		protected readonly ListView _listView;
 		readonly AListView _realListView;
 		readonly Dictionary<DataTemplate, int> _templateToId = new Dictionary<DataTemplate, int>();
+		readonly List<ConditionalFocusLayout> _layoutsCreated = new List<ConditionalFocusLayout>();
 		int _dataTemplateIncrementer = 2; // lets start at not 0 because ... 
 
 		// We will use _dataTemplateIncrementer to get the proper ViewType key for the item's DataTemplate and store these keys in  _templateToId.
@@ -32,7 +35,7 @@ namespace Xamarin.Forms.Platform.Android
 		// To prevent a conflict in the event that a ListView supports both templates and non-templates, we will start the DataTemplate key at 2.
 
 		int _listCount = -1; // -1 we need to get count from the list
-		Cell _enabledCheckCell;
+		Dictionary<object, Cell> _prototypicalCellByTypeOrDataTemplate;
 
 		bool _fromNative;
 		AView _lastSelected;
@@ -46,6 +49,7 @@ namespace Xamarin.Forms.Platform.Android
 			_context = context;
 			_realListView = realListView;
 			_listView = listView;
+			_prototypicalCellByTypeOrDataTemplate = new Dictionary<object, Cell>();
 
 			if (listView.SelectedItem != null)
 				SelectItem(listView.SelectedItem);
@@ -59,7 +63,7 @@ namespace Xamarin.Forms.Platform.Android
 			realListView.OnItemLongClickListener = this;
 
 			var platform = _listView.Platform;
-			if (platform.GetType() == typeof(AppCompat.Platform))
+			if (platform?.GetType() == typeof(AppCompat.Platform))
 				MessagingCenter.Subscribe<AppCompat.Platform>(this, AppCompat.Platform.CloseContextActionsSignalName, p => CloseContextActions());
 			else
 				MessagingCenter.Subscribe<Platform>(this, Platform.CloseContextActionsSignalName, p => CloseContextActions());
@@ -160,23 +164,41 @@ namespace Xamarin.Forms.Platform.Android
 			if (itemTemplate == null)
 				return DefaultItemTemplateId;
 
-			var selector = itemTemplate as DataTemplateSelector;
-			if (selector != null)
+			if (itemTemplate is DataTemplateSelector selector)
 			{
 				object item = null;
+
 				if (_listView.IsGroupingEnabled)
-					item = TemplatedItemsView.TemplatedItems.GetGroup(group).ListProxy[row];
+				{
+					if (TemplatedItemsView.TemplatedItems.GetGroup(group).ListProxy.Count > 0)
+						item = TemplatedItemsView.TemplatedItems.GetGroup(group).ListProxy[row];
+				}
 				else
-					item = TemplatedItemsView.TemplatedItems.ListProxy[position];
+				{
+					if (TemplatedItemsView.TemplatedItems.ListProxy.Count > 0)
+						item = TemplatedItemsView.TemplatedItems.ListProxy[position];
+				}
+
 				itemTemplate = selector.SelectTemplate(item, _listView);
 			}
-			int key;
-			if (!_templateToId.TryGetValue(itemTemplate, out key))
+
+			// check again to guard against DataTemplateSelectors that return null
+			if (itemTemplate == null)
+				return DefaultItemTemplateId;
+
+			if (!_templateToId.TryGetValue(itemTemplate, out int key))
 			{
 				_dataTemplateIncrementer++;
 				key = _dataTemplateIncrementer;
 				_templateToId[itemTemplate] = key;
 			}
+
+			if (key >= ViewTypeCount)
+			{
+				throw new Exception($"ItemTemplate count has exceeded the limit of {ViewTypeCount}" + Environment.NewLine +
+									 "Please make sure to reuse DataTemplate objects");
+			}
+
 			return key;
 		}
 
@@ -184,7 +206,7 @@ namespace Xamarin.Forms.Platform.Android
 		{
 			Cell cell = null;
 
-			Performance.Start();
+			Performance.Start(out string reference);
 
 			ListViewCachingStrategy cachingStrategy = Controller.CachingStrategy;
 			var nextCellIsHeader = false;
@@ -216,9 +238,12 @@ namespace Xamarin.Forms.Platform.Android
 				convertView = layout.GetChildAt(0);
 			}
 			else
+			{
 				layout = new ConditionalFocusLayout(_context) { Orientation = Orientation.Vertical };
+				_layoutsCreated.Add(layout);
+			}
 
-			if (cachingStrategy == ListViewCachingStrategy.RecycleElement && convertView != null)
+			if (((cachingStrategy & ListViewCachingStrategy.RecycleElement) != 0) && convertView != null)
 			{
 				var boxedCell = convertView as INativeElementView;
 				if (boxedCell == null)
@@ -268,13 +293,13 @@ namespace Xamarin.Forms.Platform.Android
 				else
 					UnsetSelectedBackground(layout);
 
-				Performance.Stop();
+				Performance.Stop(reference);
 				return layout;
 			}
 
 			AView view = CellFactory.GetCell(cell, convertView, parent, _context, _listView);
 
-			Performance.Start("AddView");
+			Performance.Start(reference, "AddView");
 
 			if (cellIsBeingReused)
 			{
@@ -287,7 +312,7 @@ namespace Xamarin.Forms.Platform.Android
 			else
 				layout.AddView(view, 0);
 
-			Performance.Stop("AddView");
+			Performance.Stop(reference, "AddView");
 
 			bool isHeader = cell.GetIsGroupHeader<ItemsView<Cell>, Cell>();
 
@@ -304,9 +329,74 @@ namespace Xamarin.Forms.Platform.Android
 
 			layout.ApplyTouchListenersToSpecialCells(cell);
 
-			Performance.Stop();
+			Performance.Stop(reference);
 
 			return layout;
+		}
+
+		internal void InvalidatePrototypicalCellCache()
+		{
+			_prototypicalCellByTypeOrDataTemplate.Clear();
+		}
+
+		internal ITemplatedItemsList<Cell> GetTemplatedItemsListForPath(int indexPath)
+		{
+			var templatedItems = TemplatedItemsView.TemplatedItems;
+			if (_listView.IsGroupingEnabled)
+				templatedItems = (ITemplatedItemsList<Cell>)((IList)templatedItems)[indexPath];
+
+			return templatedItems;
+		}
+
+		internal DataTemplate GetDataTemplateForPath(int indexPath)
+		{
+			var templatedItemsList = GetTemplatedItemsListForPath(indexPath);
+			var item = templatedItemsList.ListProxy[indexPath];
+			return templatedItemsList.SelectDataTemplate(item);
+		}
+
+		internal Type GetItemTypeForPath(int indexPath)
+		{
+			var templatedItemsList = GetTemplatedItemsListForPath(indexPath);
+			var item = templatedItemsList.ListProxy[indexPath];
+			return item.GetType();
+		}
+
+		internal Cell GetCellForPath(int indexPath)
+		{
+			var templatedItemsList = GetTemplatedItemsListForPath(indexPath);
+			var cell = templatedItemsList[indexPath];
+			return cell;
+		}
+
+		internal Cell GetPrototypicalCell(int indexPath)
+		{
+			var itemTypeOrDataTemplate = default(object);
+
+			var cachingStrategy = _listView.CachingStrategy;
+			if (cachingStrategy == ListViewCachingStrategy.RecycleElement)
+				itemTypeOrDataTemplate = GetDataTemplateForPath(indexPath);
+
+			else if (cachingStrategy == ListViewCachingStrategy.RecycleElementAndDataTemplate)
+				itemTypeOrDataTemplate = GetItemTypeForPath(indexPath);
+
+			else // ListViewCachingStrategy.RetainElement
+				return GetCellForPosition(indexPath);
+
+			if (itemTypeOrDataTemplate == null)
+				itemTypeOrDataTemplate = DefaultItemTypeOrDataTemplate;
+
+			Cell protoCell;
+			if (!_prototypicalCellByTypeOrDataTemplate.TryGetValue(itemTypeOrDataTemplate, out protoCell))
+			{
+				// cache prototypical cell by item type; Items of the same Type share
+				// the same DataTemplate (this is enforced by RecycleElementAndDataTemplate)
+				protoCell = GetCellForPosition(indexPath);
+				_prototypicalCellByTypeOrDataTemplate[itemTypeOrDataTemplate] = protoCell;
+			}
+
+			var templatedItems = GetTemplatedItemsListForPath(indexPath);
+			return templatedItems.UpdateContent(protoCell, indexPath);
 		}
 
 		public override bool IsEnabled(int position)
@@ -321,16 +411,7 @@ namespace Xamarin.Forms.Platform.Android
 				return leftOver > 0;
 			}
 
-			if (((IListViewController)list).CachingStrategy == ListViewCachingStrategy.RecycleElement)
-			{
-				if (_enabledCheckCell == null)
-					_enabledCheckCell = GetCellForPosition(position);
-				else
-					templatedItemsView.TemplatedItems.UpdateContent(_enabledCheckCell, position);
-				return _enabledCheckCell.IsEnabled;
-			}
-
-			Cell item = GetCellForPosition(position);
+			Cell item = GetPrototypicalCell(position);
 			return item.IsEnabled;
 		}
 
@@ -359,6 +440,8 @@ namespace Xamarin.Forms.Platform.Android
 					_lastSelected.Dispose();
 					_lastSelected = null;
 				}
+
+				DisposeCells();
 			}
 
 			base.Dispose(disposing);
@@ -373,13 +456,13 @@ namespace Xamarin.Forms.Platform.Android
 		{
 			Cell cell = null;
 
-			if (Controller.CachingStrategy == ListViewCachingStrategy.RecycleElement)
+			if ((Controller.CachingStrategy & ListViewCachingStrategy.RecycleElement) != 0)
 			{
 				AView cellOwner = view;
 				var layout = cellOwner as ConditionalFocusLayout;
 				if (layout != null)
 					cellOwner = layout.GetChildAt(0);
-				cell = (Cell)((INativeElementView)cellOwner).Element;
+				cell = (Cell)(cellOwner as INativeElementView)?.Element;
 			}
 
 			// All our ListView's have called AddHeaderView. This effectively becomes index 0, so our index 0 is index 1 to the listView.
@@ -390,8 +473,48 @@ namespace Xamarin.Forms.Platform.Android
 
 			if (_lastSelected != view)
 				_fromNative = true;
-			Select(position, view);
+			if (_listView.SelectionMode != ListViewSelectionMode.None)
+				Select(position, view);
 			Controller.NotifyRowTapped(position, cell);
+		}
+
+		void DisposeCells()
+		{
+			var cellCount = _layoutsCreated.Count;
+
+			for (int i = 0; i < cellCount; i++)
+			{
+				var layout = _layoutsCreated[i];
+
+				if (layout.IsDisposed())
+					continue;
+				
+				DisposeOfConditionalFocusLayout(layout);
+			}
+
+			_layoutsCreated.Clear();
+		}
+
+		void DisposeOfConditionalFocusLayout(ConditionalFocusLayout layout)
+		{
+			var renderedView = layout?.GetChildAt(0);
+
+			var element = (renderedView as INativeElementView)?.Element;
+			var view = (element as ViewCell)?.View;
+
+			if (view != null)
+			{
+				var renderer = Platform.GetRenderer(view);
+
+				if (renderer == renderedView)
+					element.ClearValue(Platform.RendererProperty);
+
+				renderer?.Dispose();
+				renderer = null;
+			}
+
+			renderedView?.Dispose();
+			renderedView = null;
 		}
 
 		// TODO: We can optimize this by storing the last position, group index and global index
@@ -426,7 +549,8 @@ namespace Xamarin.Forms.Platform.Android
 				if (global == position || cells.Count > 0)
 				{
 					//Always create a new cell if we are using the RecycleElement strategy
-					var headerCell = _listView.CachingStrategy == ListViewCachingStrategy.RecycleElement ? GetNewGroupHeaderCell(group) : group.HeaderContent;
+					var recycleElement = (_listView.CachingStrategy & ListViewCachingStrategy.RecycleElement) != 0;
+					var headerCell = recycleElement ? GetNewGroupHeaderCell(group) : group.HeaderContent;
 					cells.Add(headerCell);
 
 					if (cells.Count == take)

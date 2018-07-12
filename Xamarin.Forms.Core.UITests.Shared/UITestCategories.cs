@@ -4,10 +4,12 @@
 	{
 		public const string ActionSheet = "ActionSheet";
 		public const string ActivityIndicator = "ActivityIndicator";
+		public const string Animation = "Animation";
 		public const string AutomationId = "AutomationID";
 		public const string BoxView = "BoxView";
 		public const string Button = "Button";
 		public const string Cells = "Cells";
+		public const string ContextActions = "ContextActions";
 		public const string DatePicker = "DatePicker";
 		public const string DisplayAlert = "DisplayAlert";
 		public const string Editor = "Editor";
@@ -33,7 +35,10 @@
 		public const string InputTransparent = "InputTransparent";
 		public const string IsEnabled = "IsEnabled";
 		public const string Gestures = "Gestures";
+		public const string Navigation = "Navigation";
+		public const string Effects = "Effects";
 
 		public const string ManualReview = "ManualReview";
+		public const string Performance = "Performance";
 	}
 }

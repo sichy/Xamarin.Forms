@@ -1,15 +1,17 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+	<Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{4B14D295-C09B-4C38-B880-7CC768E50585}</ProjectGuid>
     <OutputType>Library</OutputType>
     <RootNamespace>Xamarin.Forms.Xaml.UnitTests</RootNamespace>
     <AssemblyName>Xamarin.Forms.Xaml.UnitTests</AssemblyName>
-    <TargetFrameworkVersion>v4.5.1</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7</TargetFrameworkVersion>
     <SolutionDir Condition="$(SolutionDir) == '' Or $(SolutionDir) == '*Undefined*'">..\</SolutionDir>
     <RestorePackages>true</RestorePackages>
+    <XFDisableTargetsValidation>True</XFDisableTargetsValidation>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -33,40 +35,64 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>0672;0219;0414</NoWarn>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Turkey|AnyCPU'">
-    <DebugSymbols>true</DebugSymbols>
-    <OutputPath>bin\Turkey\</OutputPath>
-    <DefineConstants>DEBUG;TURKEY</DefineConstants>
-    <DebugType>full</DebugType>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <ErrorReport>prompt</ErrorReport>
-    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
-    <WarningLevel>4</WarningLevel>
-    <Optimize>false</Optimize>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <NoWarn>0672;0219;0414</NoWarn>
-  </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Microsoft.Build.Locator, Version=1.0.0.0, Culture=neutral, PublicKeyToken=9dff12846e04bfbd, processorArchitecture=MSIL">
+      <HintPath>..\packages\Microsoft.Build.Locator.1.0.13\lib\net46\Microsoft.Build.Locator.dll</HintPath>
+    </Reference>
     <Reference Include="nunit.framework, Version=2.6.4.14350, Culture=neutral, PublicKeyToken=96d09a1eb7f44a77, processorArchitecture=MSIL">
       <HintPath>..\packages\NUnit.2.6.4\lib\nunit.framework.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Xml" />
-    <Reference Include="Microsoft.Build.Utilities.v4.0" />
-    <Reference Include="Microsoft.Build.Framework" />
-    <Reference Include="Microsoft.Build.Tasks.v4.0" />
+    <Reference Include="System.Xml.Linq" />
     <Reference Include="Mono.Cecil">
-      <HintPath>..\packages\Mono.Cecil.0.10.0-beta6\lib\net40\Mono.Cecil.dll</HintPath>
+      <HintPath>..\packages\Mono.Cecil.0.10.0-beta7\lib\net40\Mono.Cecil.dll</HintPath>
     </Reference>
     <Reference Include="Mono.Cecil.Mdb">
-      <HintPath>..\packages\Mono.Cecil.0.10.0-beta6\lib\net40\Mono.Cecil.Mdb.dll</HintPath>
+      <HintPath>..\packages\Mono.Cecil.0.10.0-beta7\lib\net40\Mono.Cecil.Mdb.dll</HintPath>
     </Reference>
     <Reference Include="Mono.Cecil.Pdb">
-      <HintPath>..\packages\Mono.Cecil.0.10.0-beta6\lib\net40\Mono.Cecil.Pdb.dll</HintPath>
+      <HintPath>..\packages\Mono.Cecil.0.10.0-beta7\lib\net40\Mono.Cecil.Pdb.dll</HintPath>
     </Reference>
     <Reference Include="Mono.Cecil.Rocks">
-      <HintPath>..\packages\Mono.Cecil.0.10.0-beta6\lib\net40\Mono.Cecil.Rocks.dll</HintPath>
+      <HintPath>..\packages\Mono.Cecil.0.10.0-beta7\lib\net40\Mono.Cecil.Rocks.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Core" />
+    <Reference Include="System.Collections.Immutable">
+      <HintPath>..\packages\System.Collections.Immutable.1.3.1\lib\portable-net45+win8+wp8+wpa81\System.Collections.Immutable.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Linq">
+      <HintPath>..\packages\System.Linq.4.1.0\lib\net463\System.Linq.dll</HintPath>
+    </Reference>
+    <Reference Include="mscorlib" />
+    <Reference Include="System.Reflection.Metadata">
+      <HintPath>..\packages\System.Reflection.Metadata.1.3.0\lib\portable-net45+win8\System.Reflection.Metadata.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime">
+      <HintPath>..\packages\System.Runtime.4.1.0\lib\net462\System.Runtime.dll</HintPath>
+    </Reference>
+    <Reference Include="System.ComponentModel.Composition" />
+    <Reference Include="System.Runtime.InteropServices">
+      <HintPath>..\packages\System.Runtime.InteropServices.4.1.0\lib\net462\System.Runtime.InteropServices.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime.InteropServices.RuntimeInformation">
+      <HintPath>..\packages\System.Runtime.InteropServices.RuntimeInformation.4.3.0\lib\net45\System.Runtime.InteropServices.RuntimeInformation.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Threading.Thread">
+      <HintPath>..\packages\System.Threading.Thread.4.0.0\lib\net46\System.Threading.Thread.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Build.Framework">
+      <HintPath>..\packages\Microsoft.Build.Framework.15.5.180\lib\net46\Microsoft.Build.Framework.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Build.Utilities.Core">
+      <HintPath>..\packages\Microsoft.Build.Utilities.Core.15.5.180\lib\net46\Microsoft.Build.Utilities.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Build.Tasks.Core">
+      <HintPath>..\packages\Microsoft.Build.Tasks.Core.15.5.180\lib\net46\Microsoft.Build.Tasks.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="System.CodeDom">
+      <HintPath>..\packages\System.CodeDom.4.4.0\lib\net461\System.CodeDom.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
@@ -79,6 +105,9 @@
     <Compile Include="AutomationProperties.xaml.cs">
       <DependentUpon>AutomationProperties.xaml</DependentUpon>
     </Compile>
+    <Compile Include="BindablePropertiesAccessModifiers.xaml.cs">
+      <DependentUpon>BindablePropertiesAccessModifiers.xaml</DependentUpon>
+    </Compile>
     <Compile Include="FontConverterTests.cs" />
     <Compile Include="Issues\Bz43450.xaml.cs">
       <DependentUpon>Bz43450.xaml</DependentUpon>
@@ -87,6 +116,8 @@
       <DependentUpon>Bz41296.xaml</DependentUpon>
     </Compile>
     <Compile Include="LoaderTests.cs" />
+    <Compile Include="MSBuild\MSBuildTests.cs" />
+    <Compile Include="MSBuild\MSBuildXmlExtensions.cs" />
     <Compile Include="PlatformSpecifics.xaml.cs">
       <DependentUpon>PlatformSpecifics.xaml</DependentUpon>
     </Compile>
@@ -97,6 +128,9 @@
     <Compile Include="OnPlatformTests.cs" />
     <Compile Include="NullExtensionTests.cs" />
     <Compile Include="TypeExtensionTests.cs" />
+    <Compile Include="VisualStateManagerTests.xaml.cs">
+      <DependentUpon>VisualStateManagerTests.xaml</DependentUpon>
+    </Compile>
     <Compile Include="XamlgTests.cs" />
     <Compile Include="Issues\TestCases.cs" />
     <Compile Include="Issues\Issue1493.cs" />
@@ -110,7 +144,7 @@
     <Compile Include="Issues\Issue1641.cs" />
     <Compile Include="Issues\Issue1594.cs" />
     <Compile Include="XamlgFileLockTests.cs" />
-    <Compile Include="DummyBuildEngine.cs" />
+    <Compile Include="MSBuild\DummyBuildEngine.cs" />
     <Compile Include="Issues\Issue1794.cs" />
     <Compile Include="StyleTests.xaml.cs">
       <DependentUpon>StyleTests.xaml</DependentUpon>
@@ -403,9 +437,6 @@
     <Compile Include="I8.xaml.cs">
       <DependentUpon>I8.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Issues\Bz49307.xaml.cs">
-      <DependentUpon>Bz49307.xaml</DependentUpon>
-    </Compile>
     <Compile Include="Issues\Unreported008.xaml.cs">
       <DependentUpon>Unreported008.xaml</DependentUpon>
     </Compile>
@@ -444,7 +475,6 @@
     </Compile>
     <Compile Include="Issues\Bz44216.xaml.cs">
       <DependentUpon>Bz44216.xaml</DependentUpon>
-      <DependentUpon>AcceptEmptyServiceProvider.xaml</DependentUpon>
     </Compile>
     <Compile Include="AcceptEmptyServiceProvider.xaml.cs">
       <DependentUpon>AcceptEmptyServiceProvider.xaml</DependentUpon>
@@ -495,9 +525,113 @@
       <DependentUpon>Bz53350.xaml</DependentUpon>
     </Compile>
     <Compile Include="XamlC\MethodDefinitionExtensionsTests.cs" />
+    <Compile Include="Issues\Bz57574.xaml.cs">
+      <DependentUpon>Bz57574.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Bz58922.xaml.cs">
+      <DependentUpon>Bz58922.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="MergedResourceDictionaries.xaml.cs">
+      <DependentUpon>MergedResourceDictionaries.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Bz59818.xaml.cs">
+      <DependentUpon>Bz59818.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="ResourceDictionaryWithSource.xaml.cs">
+      <DependentUpon>ResourceDictionaryWithSource.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="ResourceDictionaryWithInvalidSource.xaml.cs">
+      <DependentUpon>ResourceDictionaryWithInvalidSource.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Bz60575.xaml.cs">
+      <DependentUpon>Bz60575.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="ResourceLoader.xaml.cs">
+      <DependentUpon>ResourceLoader.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Bz60203.xaml.cs">
+      <DependentUpon>Bz60203.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Bz55862.xaml.cs">
+      <DependentUpon>Bz55862.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="ImplicitResourceDictionaries.xaml.cs">
+      <DependentUpon>ImplicitResourceDictionaries.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="AutoMergedResourceDictionaries.xaml.cs">
+      <DependentUpon>AutoMergedResourceDictionaries.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh1346.xaml.cs">
+      <DependentUpon>Gh1346.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="StyleSheet.xaml.cs">
+      <DependentUpon>StyleSheet.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="SetStyleIdFromXName.xaml.cs">
+      <DependentUpon>SetStyleIdFromXName.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="InlineCSS.xaml.cs">
+      <DependentUpon>InlineCSS.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh1497.xaml.cs">
+      <DependentUpon>Gh1497.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh1554.xaml.cs">
+      <DependentUpon>Gh1554.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh1566.xaml.cs">
+      <DependentUpon>Gh1566.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh1766.xaml.cs">
+      <DependentUpon>Gh1766.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh1978.xaml.cs">
+      <DependentUpon>Gh1978.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh2034.xaml.cs">
+      <DependentUpon>Gh2034.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh2007.xaml.cs">
+      <DependentUpon>Gh2007.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh2063.xaml.cs">
+      <DependentUpon>Gh2063.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh2064.xaml.cs">
+      <DependentUpon>Gh2064.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh2130.xaml.cs">
+      <DependentUpon>Gh2130.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh2171.xaml.cs">
+      <DependentUpon>Gh2171.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh2483.xaml.cs">
+      <DependentUpon>Gh2483.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh2508.xaml.cs">
+      <DependentUpon>Gh2508.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh2517.xaml.cs">
+      <DependentUpon>Gh2517.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh2632.xaml.cs">
+      <DependentUpon>Gh2632.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh2549.xaml.cs">
+      <DependentUpon>Gh2549.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Issues\Gh2574.xaml.cs">
+      <DependentUpon>Gh2574.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="XFCorePostProcessorCodeInjected.cs" />
+    <Compile Include="Issues\Gh3082.xaml.cs">
+      <DependentUpon>Gh3082.xaml</DependentUpon>
+    </Compile>
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
-  <Import Project="..\.nuspec\Xamarin.Forms.Debug.targets" />
+  <Import Project="..\.nuspec\Xamarin.Forms.Debug.targets" Condition="'$(BuildingInsideVisualStudio)' == 'true' AND Exists('..\.nuspec\Xamarin.Forms.Build.Tasks.dll')" />
+  <Import Project="..\.nuspec\Xamarin.Forms.Debug.targets" Condition="'$(BuildingInsideVisualStudio)' != 'true'" />
   <ItemGroup>
     <ProjectReference Include="..\Xamarin.Forms.Core\Xamarin.Forms.Core.csproj">
       <Project>{57B8B73D-C3B5-4C42-869E-7B2F17D354AC}</Project>
@@ -524,15 +658,6 @@
       <Name>Xamarin.Forms.Maps</Name>
     </ProjectReference>
   </ItemGroup>
-  <ProjectExtensions>
-    <MonoDevelop>
-      <Properties>
-        <Policies>
-          <StandardHeader Text="" IncludeInNewFiles="True" />
-        </Policies>
-      </Properties>
-    </MonoDevelop>
-  </ProjectExtensions>
   <ItemGroup>
     <EmbeddedResource Include="CustomXamlView.xaml">
       <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
@@ -816,9 +941,6 @@
     <EmbeddedResource Include="I8.xaml">
       <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
     </EmbeddedResource>
-    <EmbeddedResource Include="Issues\Bz49307.xaml">
-      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
-    </EmbeddedResource>
     <EmbeddedResource Include="Issues\Unreported008.xaml">
       <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
     </EmbeddedResource>
@@ -906,7 +1028,117 @@
     <EmbeddedResource Include="Issues\Bz53350.xaml">
       <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
     </EmbeddedResource>
-	</ItemGroup>
+    <EmbeddedResource Include="Issues\Bz57574.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Bz58922.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="MergedResourceDictionaries.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Bz59818.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="ResourceDictionaryWithSource.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="AppResources\Colors.xaml" />
+    <EmbeddedResource Include="AppResources\CompiledColors.xaml" />
+    <EmbeddedResource Include="ResourceDictionaryWithInvalidSource.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Bz60575.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="ResourceLoader.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Bz60203.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Bz55862.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="ImplicitResourceDictionaries.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="AutoMergedResourceDictionaries.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh1346.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh1497.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh1554.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh1566.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh1766.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh1978.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh2034.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh2007.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh2063.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh2064.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh2130.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh2171.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh2483.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh2508.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh2517.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh2632.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh2549.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh2574.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Issues\Gh3082.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+  </ItemGroup>
   <ItemGroup>
     <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />
   </ItemGroup>
@@ -914,30 +1146,48 @@
     <None Include="app.config" />
     <None Include="packages.config" />
   </ItemGroup>
-  <Import Project="$(SolutionDir)\.nuget\NuGet.targets" Condition="Exists('$(SolutionDir)\.nuget\NuGet.targets')" />
-  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
-    <PropertyGroup>
-      <ErrorText>This project references NuGet package(s) that are missing on this computer. Enable NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
-    </PropertyGroup>
-    <Error Condition="!Exists('$(SolutionDir)\.nuget\NuGet.targets')" Text="$([System.String]::Format('$(ErrorText)', '$(SolutionDir)\.nuget\NuGet.targets'))" />
-  </Target>
   <ItemGroup>
+    <EmbeddedResource Include="css\foo.css" />
+    <EmbeddedResource Include="css\bar.css" />
+    <EmbeddedResource Include="StyleSheet.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
     <EmbeddedResource Include="Issues\Bz41296.xaml">
       <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
     </EmbeddedResource>
-  </ItemGroup>
-  <ItemGroup>
     <EmbeddedResource Include="PlatformSpecifics.xaml">
       <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
     </EmbeddedResource>
-  </ItemGroup>
-  <ItemGroup>
     <EmbeddedResource Include="Issues\Bz43450.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="AutomationProperties.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="SetStyleIdFromXName.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+    <EmbeddedResource Include="InlineCSS.xaml">
       <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="AutomationProperties.xaml">
+    <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="VisualStateManagerTests.xaml">
+      <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="BindablePropertiesAccessModifiers.xaml">
       <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
     </EmbeddedResource>
   </ItemGroup>

@@ -5,8 +5,8 @@ using System.Threading.Tasks;
 using CoreGraphics;
 using Foundation;
 using UIKit;
-using RectangleF = CoreGraphics.CGRect;
 using Xamarin.Forms.Internals;
+using RectangleF = CoreGraphics.CGRect;
 
 namespace Xamarin.Forms.Platform.iOS
 {
@@ -163,6 +163,8 @@ namespace Xamarin.Forms.Platform.iOS
 
 		Task INavigation.PushModalAsync(Page modal, bool animated)
 		{
+			EndEditing();
+
 			_modals.Add(modal);
 			modal.Platform = this;
 
@@ -180,17 +182,19 @@ namespace Xamarin.Forms.Platform.iOS
 
 		SizeRequest IPlatform.GetNativeSize(VisualElement view, double widthConstraint, double heightConstraint)
 		{
+			Performance.Start(out string reference);
+
 			var renderView = GetRenderer(view);
 			if (renderView == null || renderView.NativeView == null)
 				return new SizeRequest(Size.Zero);
 
+			Performance.Stop(reference);
 			return renderView.GetDesiredSize(widthConstraint, heightConstraint);
 		}
 
 		public static IVisualElementRenderer CreateRenderer(VisualElement element)
 		{
-			var t = element.GetType();
-			var renderer = Internals.Registrar.Registered.GetHandler<IVisualElementRenderer>(t) ?? new DefaultRenderer();
+			var renderer = Internals.Registrar.Registered.GetHandlerForObject<IVisualElementRenderer>(element) ?? new DefaultRenderer();
 			renderer.SetElement(element);
 			return renderer;
 		}
@@ -473,14 +477,40 @@ namespace Xamarin.Forms.Platform.iOS
 			// One might wonder why these delays are here... well thats a great question. It turns out iOS will claim the 
 			// presentation is complete before it really is. It does not however inform you when it is really done (and thus 
 			// would be safe to dismiss the VC). Fortunately this is almost never an issue
+
 			await _renderer.PresentViewControllerAsync(wrapper, animated);
 			await Task.Delay(5);
+		}
+
+		void EndEditing()
+		{
+			// If any text entry controls have focus, we need to end their editing session
+			// so that they are not the first responder; if we don't some things (like the activity indicator
+			// on pull-to-refresh) will not work correctly. 
+
+			// The topmost modal on the stack will have the Window; we can use that to end any current
+			// editing that's going on 
+			if (_modals.Count > 0)
+			{
+				var uiViewController = GetRenderer(_modals[_modals.Count - 1]) as UIViewController;
+				uiViewController?.View?.Window?.EndEditing(true);
+				return;
+			}
+
+			// If there aren't any modals, then the platform renderer will have the Window
+			_renderer.View?.Window?.EndEditing(true);
 		}
 
 		internal class DefaultRenderer : VisualElementRenderer<VisualElement>
 		{
 			public override UIView HitTest(CGPoint point, UIEvent uievent)
 			{
+				if (!UserInteractionEnabled) 
+				{
+					// This view can't interact, and neither can its children
+					return null;
+				}
+
 				// UIview hit testing ignores objects which have an alpha of less than 0.01 
 				// (see https://developer.apple.com/reference/uikit/uiview/1622469-hittest)
 				// To prevent layouts with low opacity from being implicitly input transparent, 
@@ -499,6 +529,16 @@ namespace Xamarin.Forms.Platform.iOS
 				if (UserInteractionEnabled && old <= 0.01)
 				{
 					Alpha = old;
+				}
+
+				if (UserInteractionEnabled && Element is Layout layout && !layout.CascadeInputTransparent)
+				{
+					// This is a Layout with 'InputTransparent = true' and 'InputTransparentInherited = false'
+					if (this.Equals(result))
+					{
+						// If the hit is on the Layout (and not a child control), then ignore it
+						return null;
+					}
 				}
 
 				return result;

@@ -28,20 +28,13 @@ namespace Xamarin.Forms
 {
 	public static class Forms
 	{
-		//Preserve GetCallingAssembly
-		static readonly bool nevertrue = false;
-
 		public static bool IsInitialized { get; private set; }
 
 #if __MOBILE__
 		static bool? s_isiOS9OrNewer;
 		static bool? s_isiOS10OrNewer;
+		static bool? s_isiOS11OrNewer;
 #endif
-		static Forms()
-		{
-			if (nevertrue)
-				Assembly.GetCallingAssembly();
-		}
 
 #if __MOBILE__
 		internal static bool IsiOS9OrNewer
@@ -64,7 +57,30 @@ namespace Xamarin.Forms
 				return s_isiOS10OrNewer.Value;
 			}
 		}
+
+		internal static bool IsiOS11OrNewer
+		{
+			get
+			{
+				if (!s_isiOS11OrNewer.HasValue)
+					s_isiOS11OrNewer = UIDevice.CurrentDevice.CheckSystemVersion(11, 0);
+				return s_isiOS11OrNewer.Value;
+			}
+		}
 #endif
+
+		static IReadOnlyList<string> s_flags;
+		public static IReadOnlyList<string> Flags => s_flags ?? (s_flags = new List<string>().AsReadOnly());
+
+		public static void SetFlags(params string[] flags)
+		{
+			if (IsInitialized)
+			{
+				throw new InvalidOperationException($"{nameof(SetFlags)} must be called before {nameof(Init)}");
+			}
+
+			s_flags = flags.ToList().AsReadOnly();
+		}
 
 		public static void Init()
 		{
@@ -77,9 +93,12 @@ namespace Xamarin.Forms
 
 #if __MOBILE__
 			Device.SetIdiom(UIDevice.CurrentDevice.UserInterfaceIdiom == UIUserInterfaceIdiom.Pad ? TargetIdiom.Tablet : TargetIdiom.Phone);
+			Device.SetFlowDirection(UIApplication.SharedApplication.UserInterfaceLayoutDirection.ToFlowDirection());
 #else
 			Device.SetIdiom(TargetIdiom.Desktop);
+			Device.SetFlowDirection(NSApplication.SharedApplication.UserInterfaceLayoutDirection.ToFlowDirection());
 #endif
+			Device.SetFlags(s_flags);
 			Device.PlatformServices = new IOSPlatformServices();
 			Device.Info = new IOSDeviceInfo();
 
@@ -239,7 +258,12 @@ namespace Xamarin.Forms
 
 			public void OpenUriAction(Uri uri)
 			{
-				var url = NSUrl.FromString(uri.ToString()) ?? new NSUrl(uri.Scheme, uri.Host, uri.LocalPath);
+				NSUrl url;
+
+				if (uri.Scheme == "tel" || uri.Scheme == "mailto")
+					url = new NSUrl(uri.AbsoluteUri);
+				else
+					url = NSUrl.FromString(uri.OriginalString) ?? new NSUrl(uri.Scheme, uri.Host, uri.PathAndQuery);
 #if __MOBILE__
 				UIApplication.SharedApplication.OpenUrl(url);
 #else
@@ -306,18 +330,26 @@ namespace Xamarin.Forms
 					return Task.FromResult(_isolatedStorageFile.GetLastWriteTime(path));
 				}
 
-				public Task<Stream> OpenFileAsync(string path, Internals.FileMode mode, Internals.FileAccess access)
+				public Task<Stream> OpenFileAsync(string path, FileMode mode, FileAccess access)
 				{
-					Stream stream = _isolatedStorageFile.OpenFile(path, (System.IO.FileMode)mode, (System.IO.FileAccess)access);
+					Stream stream = _isolatedStorageFile.OpenFile(path, mode, access);
 					return Task.FromResult(stream);
 				}
 
-				public Task<Stream> OpenFileAsync(string path, Internals.FileMode mode, Internals.FileAccess access, Internals.FileShare share)
+				public Task<Stream> OpenFileAsync(string path, FileMode mode, FileAccess access, FileShare share)
 				{
-					Stream stream = _isolatedStorageFile.OpenFile(path, (System.IO.FileMode)mode, (System.IO.FileAccess)access,
-						(System.IO.FileShare)share);
+					Stream stream = _isolatedStorageFile.OpenFile(path, mode, access, share);
 					return Task.FromResult(stream);
 				}
+			}
+
+			public void QuitApplication()
+			{
+#if __MOBILE__
+				Log.Warning(nameof(IOSPlatformServices), "Platform doesn't implement QuitApp");
+#else
+				NSApplication.SharedApplication.Terminate(new NSObject());
+#endif
 			}
 		}
 	}

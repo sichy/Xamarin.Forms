@@ -37,6 +37,11 @@ namespace Xamarin.Forms.Xaml
 {
 	static class XamlParser
 	{
+		public const string XFUri = "http://xamarin.com/schemas/2014/forms";
+		public const string X2006Uri = "http://schemas.microsoft.com/winfx/2006/xaml";
+		public const string X2009Uri = "http://schemas.microsoft.com/winfx/2009/xaml";
+		public const string McUri = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+
 		public static void ParseXaml(RootNode rootNode, XmlReader reader)
 		{
 			IList<KeyValuePair<string, string>> xmlns;
@@ -79,14 +84,14 @@ namespace Xamarin.Forms.Xaml
 								node.Properties.Add(name, prop);
 						}
 						// 2. Xaml2009 primitives, x:Arguments, ...
-						else if (reader.NamespaceURI == "http://schemas.microsoft.com/winfx/2009/xaml" && reader.LocalName == "Arguments")
+						else if (reader.NamespaceURI == X2009Uri && reader.LocalName == "Arguments")
 						{
 							var prop = ReadNode(reader);
 							if (prop != null)
 								node.Properties.Add(XmlName.xArguments, prop);
 						}
 						// 3. DataTemplate (should be handled by 4.)
-						else if (node.XmlType.NamespaceUri == "http://xamarin.com/schemas/2014/forms" &&
+						else if (node.XmlType.NamespaceUri == XFUri &&
 						         (node.XmlType.Name == "DataTemplate" || node.XmlType.Name == "ControlTemplate"))
 						{
 							var prop = ReadNode(reader, true);
@@ -203,17 +208,17 @@ namespace Xamarin.Forms.Xaml
 
 				object value = reader.Value;
 
-				if (reader.NamespaceURI == "http://schemas.microsoft.com/winfx/2006/xaml")
+				if (reader.NamespaceURI == X2006Uri)
 				{
-					switch (reader.Name) {
-					case "x:Key":
+					switch (reader.LocalName) {
+					case "Key":
 						propertyName = XmlName.xKey;
 						break;
-					case "x:Name":
+					case "Name":
 						propertyName = XmlName.xName;
 						break;
-					case "x:Class":
-					case "x:FieldModifier":
+					case "Class":
+					case "FieldModifier":
 						continue;
 					default:
 						Debug.WriteLine("Unhandled attribute {0}", reader.Name);
@@ -221,29 +226,29 @@ namespace Xamarin.Forms.Xaml
 					}
                 }
 
-				if (reader.NamespaceURI == "http://schemas.microsoft.com/winfx/2009/xaml")
+				if (reader.NamespaceURI == X2009Uri)
 				{
-					switch (reader.Name) {
-					case "x:Key":
+					switch (reader.LocalName) {
+					case "Key":
 						propertyName = XmlName.xKey;
 						break;
-					case "x:Name":
+					case "Name":
 						propertyName = XmlName.xName;
 						break;
-					case "x:TypeArguments":
+					case "TypeArguments":
 						propertyName = XmlName.xTypeArguments;
 						value = TypeArgumentsParser.ParseExpression((string)value, (IXmlNamespaceResolver)reader, (IXmlLineInfo)reader);
 						break;
-					case "x:DataType":
+					case "DataType":
 						propertyName = XmlName.xDataType;
 						break;
-					case "x:Class":
-					case "x:FieldModifier":
+					case "Class":
+					case "FieldModifier":
 						continue;
-					case "x:FactoryMethod":
+					case "FactoryMethod":
 						propertyName = XmlName.xFactoryMethod;
 						break;
-					case "x:Arguments":
+					case "Arguments":
 						propertyName = XmlName.xArguments;
 						break;
 					default:
@@ -273,8 +278,7 @@ namespace Xamarin.Forms.Xaml
 					if (targetPlatform != Device.RuntimePlatform)
 					{
 						// Special case for Windows backward compatibility
-						if (targetPlatform == "Windows" &&
-						    (Device.RuntimePlatform == Device.UWP || Device.RuntimePlatform == Device.WinRT))
+						if (targetPlatform == "Windows" && Device.RuntimePlatform == Device.UWP)
 							continue;
 						
 						prefixes.Add(prefix);

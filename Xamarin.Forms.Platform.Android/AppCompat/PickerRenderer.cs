@@ -1,12 +1,15 @@
-using System;
-using System.ComponentModel;
-using System.Linq;
 using Android.App;
 using Android.Content.Res;
 using Android.Text;
+using Android.Util;
 using Android.Widget;
-using Object = Java.Lang.Object;
+using System;
 using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Linq;
+using Android.Content;
+using Object = Java.Lang.Object;
+using Xamarin.Forms.PlatformConfiguration.AndroidSpecific;
 
 namespace Xamarin.Forms.Platform.Android.AppCompat
 {
@@ -16,6 +19,12 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 		bool _disposed;
 		TextColorSwitcher _textColorSwitcher;
 
+		public PickerRenderer(Context context) : base(context)
+		{
+			AutoPackage = false;
+		}
+
+		[Obsolete("This constructor is obsolete as of version 2.5. Please use PickerRenderer(Context) instead.")]
 		public PickerRenderer()
 		{
 			AutoPackage = false;
@@ -54,9 +63,13 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 					textField.Tag = this;
 					textField.InputType = InputTypes.Null;
 					textField.SetOnClickListener(PickerListener.Instance);
-					_textColorSwitcher = new TextColorSwitcher(textField.TextColors);
+
+					var useLegacyColorManagement = e.NewElement.UseLegacyColorManagement();
+					_textColorSwitcher = new TextColorSwitcher(textField.TextColors, useLegacyColorManagement);
+					
 					SetNativeControl(textField);
 				}
+				UpdateFont();
 				UpdatePicker();
 				UpdateTextColor();
 			}
@@ -70,10 +83,12 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 
 			if (e.PropertyName == Picker.TitleProperty.PropertyName)
 				UpdatePicker();
-			if (e.PropertyName == Picker.SelectedIndexProperty.PropertyName)
+			else if (e.PropertyName == Picker.SelectedIndexProperty.PropertyName)
 				UpdatePicker();
-			if (e.PropertyName == Picker.TextColorProperty.PropertyName)
+			else if (e.PropertyName == Picker.TextColorProperty.PropertyName)
 				UpdateTextColor();
+			else if (e.PropertyName == Picker.FontAttributesProperty.PropertyName || e.PropertyName == Picker.FontFamilyProperty.PropertyName || e.PropertyName == Picker.FontSizeProperty.PropertyName)
+				UpdateFont();
 		}
 
 		internal override void OnFocusChangeRequested(object sender, VisualElement.FocusRequestArgs e)
@@ -125,11 +140,17 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			UpdatePicker();
 		}
 
+		void UpdateFont()
+		{
+			Control.Typeface = Element.ToTypeface();
+			Control.SetTextSize(ComplexUnitType.Sp, (float)Element.FontSize);
+		}
+
 		void UpdatePicker()
 		{
 			Control.Hint = Element.Title;
 
-			if (Element.SelectedIndex == -1 || Element.Items == null)
+			if (Element.SelectedIndex == -1 || Element.Items == null || Element.SelectedIndex >= Element.Items.Count)
 				Control.Text = null;
 			else
 				Control.Text = Element.Items[Element.SelectedIndex];

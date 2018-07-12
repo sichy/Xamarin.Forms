@@ -39,7 +39,7 @@ namespace Xamarin.Forms.Platform.iOS
 
 			IImageSourceHandler handler;
 
-			if (source != null && (handler = Internals.Registrar.Registered.GetHandler<IImageSourceHandler>(source.GetType())) != null)
+			if (source != null && (handler = Internals.Registrar.Registered.GetHandlerForObject<IImageSourceHandler>(source)) != null)
 			{
 				UIImage uiimage;
 				try
@@ -53,8 +53,13 @@ namespace Xamarin.Forms.Platform.iOS
 
 				NSRunLoop.Main.BeginInvokeOnMainThread(() =>
 				{
-					target.ImageView.Image = uiimage;
-					target.SetNeedsLayout();
+					if (target.Cell != null)
+					{
+						target.ImageView.Image = uiimage;
+						target.SetNeedsLayout();
+					}
+					else
+						uiimage?.Dispose();
 				});
 			}
 			else

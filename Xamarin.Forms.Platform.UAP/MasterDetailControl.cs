@@ -4,6 +4,7 @@ using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
 using Xamarin.Forms.PlatformConfiguration.WindowsSpecific;
+using WImageSource = Windows.UI.Xaml.Media.ImageSource;
 
 namespace Xamarin.Forms.Platform.UWP
 {
@@ -22,6 +23,9 @@ namespace Xamarin.Forms.Platform.UWP
 		public static readonly DependencyProperty ShouldShowSplitModeProperty = DependencyProperty.Register(nameof(ShouldShowSplitMode), typeof(bool), typeof(MasterDetailControl),
 			new PropertyMetadata(default(bool), OnShouldShowSplitModeChanged));
 
+		public static readonly DependencyProperty ShouldShowNavigationBarProperty = DependencyProperty.Register(nameof(ShouldShowNavigationBar), typeof(bool), typeof(MasterDetailControl),
+		new PropertyMetadata(true, OnShouldShowSplitModeChanged));
+
 		public static readonly DependencyProperty CollapseStyleProperty = DependencyProperty.Register(nameof(CollapseStyle), typeof(CollapseStyle), 
 			typeof(MasterDetailControl), new PropertyMetadata(CollapseStyle.Full, CollapseStyleChanged));
 
@@ -29,6 +33,10 @@ namespace Xamarin.Forms.Platform.UWP
 			new PropertyMetadata(48d, CollapsedPaneWidthChanged));
 
 		public static readonly DependencyProperty DetailTitleProperty = DependencyProperty.Register("DetailTitle", typeof(string), typeof(MasterDetailControl), new PropertyMetadata(default(string)));
+
+		public static readonly DependencyProperty DetailTitleIconProperty = DependencyProperty.Register(nameof(DetailTitleIcon), typeof(WImageSource), typeof(MasterDetailControl), new PropertyMetadata(default(WImageSource)));
+
+		public static readonly DependencyProperty DetailTitleViewProperty = DependencyProperty.Register(nameof(DetailTitleView), typeof(View), typeof(MasterDetailControl), new PropertyMetadata(default(View), OnTitleViewPropertyChanged));
 
 		public static readonly DependencyProperty ToolbarForegroundProperty = DependencyProperty.Register("ToolbarForeground", typeof(Brush), typeof(MasterDetailControl),
 			new PropertyMetadata(default(Brush)));
@@ -42,6 +50,9 @@ namespace Xamarin.Forms.Platform.UWP
 		public static readonly DependencyProperty DetailTitleVisibilityProperty = DependencyProperty.Register("DetailTitleVisibility", typeof(Visibility), typeof(MasterDetailControl),
 			new PropertyMetadata(default(Visibility)));
 
+		public static readonly DependencyProperty DetailTitleViewVisibilityProperty = DependencyProperty.Register(nameof(DetailTitleViewVisibility), typeof(Visibility), typeof(MasterDetailControl),
+			new PropertyMetadata(default(Visibility)));
+
 		public static readonly DependencyProperty MasterToolbarVisibilityProperty = DependencyProperty.Register("MasterToolbarVisibility", typeof(Visibility), typeof(MasterDetailControl),
 			new PropertyMetadata(default(Visibility)));
 
@@ -50,6 +61,7 @@ namespace Xamarin.Forms.Platform.UWP
 		
 		CommandBar _commandBar;
 		readonly ToolbarPlacementHelper _toolbarPlacementHelper = new ToolbarPlacementHelper();
+		bool _firstLoad;
 
 		public bool ShouldShowToolbar
 		{
@@ -62,6 +74,7 @@ namespace Xamarin.Forms.Platform.UWP
 		FrameworkElement _detailPresenter;
 		SplitView _split;
 	    ToolbarPlacement _toolbarPlacement;
+		FrameworkElement _titleViewPresenter;
 
 	    public MasterDetailControl()
 		{
@@ -106,10 +119,28 @@ namespace Xamarin.Forms.Platform.UWP
 			set { SetValue(DetailTitleProperty, value); }
 		}
 
+		public WImageSource DetailTitleIcon
+		{
+			get { return (WImageSource)GetValue(DetailTitleIconProperty); }
+			set { SetValue(DetailTitleIconProperty, value); }
+		}
+
+		public View DetailTitleView
+		{
+			get { return (View)GetValue(DetailTitleViewProperty); }
+			set { SetValue(DetailTitleViewProperty, value); }
+		}
+
 		public Visibility DetailTitleVisibility
 		{
 			get { return (Visibility)GetValue(DetailTitleVisibilityProperty); }
 			set { SetValue(DetailTitleVisibilityProperty, value); }
+		}
+
+		public Visibility DetailTitleViewVisibility
+		{
+			get { return (Visibility)GetValue(DetailTitleViewVisibilityProperty); }
+			set { SetValue(DetailTitleViewVisibilityProperty, value); }
 		}
 
 		public bool IsPaneOpen
@@ -139,8 +170,11 @@ namespace Xamarin.Forms.Platform.UWP
 
 				// On first load, the _commandBar will still occupy space by the time this is called.
 				// Check ShouldShowToolbar to make sure the _commandBar will still be there on render.
-				if (_commandBar != null && ShouldShowToolbar)
+				if (_firstLoad && _commandBar != null && ShouldShowToolbar)
+				{
 					height -= _commandBar.ActualHeight;
+					_firstLoad = false;
+				}
 
 				if (_split != null)
 					width = _split.OpenPaneLength;
@@ -215,6 +249,12 @@ namespace Xamarin.Forms.Platform.UWP
 			set { SetValue(ToolbarForegroundProperty, value); }
 		}
 
+		public bool ShouldShowNavigationBar
+		{
+			get { return (bool)GetValue(ShouldShowNavigationBarProperty); }
+			set { SetValue(ShouldShowNavigationBarProperty, value); }
+		}
+
 		Task<CommandBar> IToolbarProvider.GetCommandBarAsync()
 		{
 			if (_commandBar != null)
@@ -247,6 +287,7 @@ namespace Xamarin.Forms.Platform.UWP
 
 			_masterPresenter = GetTemplateChild("MasterPresenter") as FrameworkElement;
 			_detailPresenter = GetTemplateChild("DetailPresenter") as FrameworkElement;
+			_titleViewPresenter = GetTemplateChild("TitleViewPresenter") as FrameworkElement;
 
 			_commandBar = GetTemplateChild("CommandBar") as CommandBar;
 			_toolbarPlacementHelper.Initialize(_commandBar, () => ToolbarPlacement, GetTemplateChild);
@@ -272,9 +313,22 @@ namespace Xamarin.Forms.Platform.UWP
 			((MasterDetailControl)dependencyObject).UpdateMode();
 		}
 
+		static void OnTitleViewPropertyChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs e)
+		{
+			((MasterDetailControl)dependencyObject).UpdateTitleViewPresenter();
+		}
+
 		void OnToggleClicked(object sender, RoutedEventArgs args)
 		{
 			IsPaneOpen = !IsPaneOpen;
+		}
+
+		void OnTitleViewPresenterLoaded(object sender, RoutedEventArgs e)
+		{
+			if (DetailTitleView == null || _titleViewPresenter == null || _commandBar == null)
+				return;
+
+			_titleViewPresenter.Width = _commandBar.ActualWidth;
 		}
 
 		void UpdateMode()
@@ -302,9 +356,32 @@ namespace Xamarin.Forms.Platform.UWP
 			ContentTogglePaneButtonVisibility = _split.DisplayMode == SplitViewDisplayMode.Overlay 
 				? Visibility.Visible 
 				: Visibility.Collapsed;
-
+			
 			if (ContentTogglePaneButtonVisibility == Visibility.Visible)
 				DetailTitleVisibility = Visibility.Visible;
+
+			if (DetailTitleVisibility == Visibility.Visible && !ShouldShowNavigationBar)
+				DetailTitleVisibility = Visibility.Collapsed;
+
+			_firstLoad = true;
+		}
+
+		void UpdateTitleViewPresenter()
+		{
+			if (DetailTitleView == null)
+			{
+				DetailTitleViewVisibility = Visibility.Collapsed;
+
+				if (_titleViewPresenter != null)
+					_titleViewPresenter.Loaded -= OnTitleViewPresenterLoaded;
+			}
+			else
+			{
+				DetailTitleViewVisibility = Visibility.Visible;
+
+				if (_titleViewPresenter != null)
+					_titleViewPresenter.Loaded += OnTitleViewPresenterLoaded;
+			}
 		}
 	}
 }

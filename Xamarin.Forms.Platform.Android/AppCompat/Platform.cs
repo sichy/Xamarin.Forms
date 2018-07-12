@@ -165,30 +165,41 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 
 		SizeRequest IPlatform.GetNativeSize(VisualElement view, double widthConstraint, double heightConstraint)
 		{
-			Performance.Start();
+			Performance.Start(out string reference);
 
 			// FIXME: potential crash
-			IVisualElementRenderer viewRenderer = Android.Platform.GetRenderer(view);
+			IVisualElementRenderer visualElementRenderer = Android.Platform.GetRenderer(view);
 
 			// negative numbers have special meanings to android they don't to us
 			widthConstraint = widthConstraint <= -1 ? double.PositiveInfinity : _context.ToPixels(widthConstraint);
 			heightConstraint = heightConstraint <= -1 ? double.PositiveInfinity : _context.ToPixels(heightConstraint);
 
-			int width = !double.IsPositiveInfinity(widthConstraint)
+			bool widthConstrained = !double.IsPositiveInfinity(widthConstraint);
+			bool heightConstrained = !double.IsPositiveInfinity(heightConstraint);
+
+			int widthMeasureSpec = widthConstrained
 							? MeasureSpecFactory.MakeMeasureSpec((int)widthConstraint, MeasureSpecMode.AtMost)
 							: MeasureSpecFactory.MakeMeasureSpec(0, MeasureSpecMode.Unspecified);
 
-			int height = !double.IsPositiveInfinity(heightConstraint)
+			int heightMeasureSpec = heightConstrained
 							 ? MeasureSpecFactory.MakeMeasureSpec((int)heightConstraint, MeasureSpecMode.AtMost)
 							 : MeasureSpecFactory.MakeMeasureSpec(0, MeasureSpecMode.Unspecified);
 
-			SizeRequest rawResult = viewRenderer.GetDesiredSize(width, height);
+			SizeRequest rawResult = visualElementRenderer.GetDesiredSize(widthMeasureSpec, heightMeasureSpec);
 			if (rawResult.Minimum == Size.Zero)
 				rawResult.Minimum = rawResult.Request;
 			var result = new SizeRequest(new Size(_context.FromPixels(rawResult.Request.Width), _context.FromPixels(rawResult.Request.Height)),
 				new Size(_context.FromPixels(rawResult.Minimum.Width), _context.FromPixels(rawResult.Minimum.Height)));
 
-			Performance.Stop();
+			if ((widthConstrained && result.Request.Width < widthConstraint)
+				|| (heightConstrained && result.Request.Height < heightConstraint))
+			{
+				// Do a final exact measurement in case the native control needs to fill the container
+				(visualElementRenderer as IViewRenderer)?.MeasureExactly();
+			}
+
+			Performance.Stop(reference);
+
 			return result;
 		}
 
@@ -264,8 +275,7 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			if (Android.Platform.GetRenderer(page) != null)
 				return;
 
-			Android.Platform.SetPageContext(page, _context);
-			IVisualElementRenderer renderView = Android.Platform.CreateRenderer(page);
+			IVisualElementRenderer renderView = Android.Platform.CreateRenderer(page, _context);
 			Android.Platform.SetRenderer(page, renderView);
 
 			if (layout)
@@ -342,8 +352,7 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 				_backgroundView.SetWindowBackground();
 				AddView(_backgroundView);
 
-				Android.Platform.SetPageContext(modal, context);
-				_renderer = Android.Platform.CreateRenderer(modal);
+				_renderer = Android.Platform.CreateRenderer(modal, context);
 				Android.Platform.SetRenderer(modal, _renderer);
 
 				AddView(_renderer.View);

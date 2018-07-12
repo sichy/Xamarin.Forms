@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using Xamarin.Forms.CustomAttributes;
 using Xamarin.Forms.Internals;
-
+using Xamarin.Forms.PlatformConfiguration;
+using Xamarin.Forms.PlatformConfiguration.iOSSpecific;
 
 #if UITEST
 using NUnit.Framework;
 using Xamarin.UITest.Queries;
+using Xamarin.Forms.Core.UITests;
 #endif
 
 namespace Xamarin.Forms.Controls.Issues
@@ -17,11 +19,17 @@ namespace Xamarin.Forms.Controls.Issues
 	// will trigger the frame's tap gesture; for most controls it will not (the control itself absorbs the tap),
 	// but for non-interactive controls (box, frame, image, label) the gesture bubbles up to the container.
 
+#if UITEST
+	[Category(UITestCategories.Gestures)]
+#endif
+
 	[Preserve(AllMembers = true)]
 	[Issue(IssueTracker.None, 00100100, "Verify that the tap gesture bubbling behavior is consistent across the platforms", PlatformAffected.All)]
 	public class GestureBubblingTests : TestNavigationPage
 	{
 		const string TargetAutomationId = "controlinsideofframe";
+		const string NoTaps = "No taps yet";
+		const string Tapped = "Frame was tapped";
 		ContentPage _menu;
 
 #if UITEST
@@ -42,7 +50,7 @@ namespace Xamarin.Forms.Controls.Issues
 			}
 
 			// Find the start label
-			RunningApp.WaitForElement(q => q.Marked("Start"));
+			RunningApp.WaitForElement(q => q.Marked(NoTaps));
 
 			// Find the control we're testing
 			var result = RunningApp.WaitForElement(q => q.Marked(TargetAutomationId));
@@ -67,22 +75,24 @@ namespace Xamarin.Forms.Controls.Issues
 				// These controls show a pop-up which we have to cancel/done out of before we can continue
 #if __ANDROID__
 				var cancelButtonText = "Cancel";
+				RunningApp.Back();
 #elif __IOS__
 				var cancelButtonText = "Done";
-#else
-				var cancelButtonText = "X";
-#endif
 				RunningApp.WaitForElement(q => q.Marked(cancelButtonText));
 				RunningApp.Tap(q => q.Marked(cancelButtonText));
+#else
+				var cancelButtonText = "DismissButton";
+#endif
+
 			}
 
 			if (frameShouldRegisterTap)
 			{
-				RunningApp.WaitForElement(q => q.Marked("Frame was tapped"));
+				RunningApp.WaitForElement(q => q.Marked(Tapped));
 			}
 			else
 			{
-				RunningApp.WaitForElement(q => q.Marked("Start"));
+				RunningApp.WaitForElement(q => q.Marked(NoTaps));
 			}
 		}
 #endif
@@ -94,24 +104,24 @@ namespace Xamarin.Forms.Controls.Issues
 			if (_controlsWhichShouldAllowTheTapToBubbleUp.Contains(view.GetType().Name))
 			{
 				instructions.Text =
-					"Tap the frame below. The label with the text 'No taps yet' should change its text to 'Frame was tapped'.";
+					$"Tap the frame below. The label with the text '{NoTaps}' should change its text to '{Tapped}'.";
 			}
 			else
 			{
 				instructions.Text =
-					"Tap the frame below. The label with the text 'No taps yet' should not change.";
+					$"Tap the frame below. The label with the text '{NoTaps}' should not change.";
 			}
 
-			var label = new Label { Text = "Start" };
+			var label = new Label { Text = NoTaps };
 
 			var frame = new Frame { Content = new StackLayout { Children = { view } } };
 
 			var rec = new TapGestureRecognizer { NumberOfTapsRequired = 1 };
-			rec.Tapped += (s, e) => { label.Text = "Frame was tapped"; };
+			rec.Tapped += (s, e) => { label.Text = Tapped; };
 			frame.GestureRecognizers.Add(rec);
-			
+
 			var layout = new StackLayout();
-		
+
 			layout.Children.Add(instructions);
 			layout.Children.Add(label);
 			layout.Children.Add(frame);
@@ -195,7 +205,11 @@ namespace Xamarin.Forms.Controls.Issues
 
 			col2.Children.Add(MenuButton(nameof(DatePicker), () => new DatePicker()));
 			col2.Children.Add(MenuButton(nameof(TimePicker), () => new TimePicker()));
-			col2.Children.Add(MenuButton(nameof(Slider), () => new Slider()));
+
+			var slider = new Slider();
+			slider.On<iOS>().SetUpdateOnTap(true);
+			col2.Children.Add(MenuButton(nameof(Slider), () => slider));
+
 			col2.Children.Add(MenuButton(nameof(Switch), () => new Switch()));
 			col2.Children.Add(MenuButton(nameof(Stepper), () => new Stepper()));
 			col2.Children.Add(MenuButton(nameof(BoxView), () => new BoxView { BackgroundColor = Color.DarkMagenta, WidthRequest = 100, HeightRequest = 100 }));

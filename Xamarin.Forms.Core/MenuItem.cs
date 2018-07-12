@@ -1,11 +1,19 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Windows.Input;
 
 namespace Xamarin.Forms
 {
+
 	public class MenuItem : BaseMenuItem, IMenuItemController
 	{
+		public static readonly BindableProperty AcceleratorProperty = BindableProperty.CreateAttached(nameof(Accelerator), typeof(Accelerator), typeof(MenuItem), null);
+
+		public static Accelerator GetAccelerator(BindableObject bindable) => (Accelerator)bindable.GetValue(AcceleratorProperty);
+
+		public static void SetAccelerator(BindableObject bindable, Accelerator value) => bindable.SetValue(AcceleratorProperty, value);
+
 		public static readonly BindableProperty TextProperty = BindableProperty.Create("Text", typeof(string), typeof(MenuItem), null);
 
 		public static readonly BindableProperty CommandProperty = BindableProperty.Create("Command", typeof(ICommand), typeof(MenuItem), null,
@@ -75,11 +83,7 @@ namespace Xamarin.Forms
 		public event EventHandler Clicked;
 
 		protected virtual void OnClicked()
-		{
-			EventHandler handler = Clicked;
-			if (handler != null)
-				handler(this, EventArgs.Empty);
-		}
+			=> Clicked?.Invoke(this, EventArgs.Empty);
 
 		[EditorBrowsable(EditorBrowsableState.Never)]
 		public void Activate()

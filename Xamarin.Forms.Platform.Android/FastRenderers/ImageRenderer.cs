@@ -1,6 +1,7 @@
 ﻿using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
+using Android.Content;
 using AImageView = Android.Widget.ImageView;
 using AView = Android.Views.View;
 using Android.Views;
@@ -8,7 +9,7 @@ using Xamarin.Forms.Internals;
 
 namespace Xamarin.Forms.Platform.Android.FastRenderers
 {
-	public class ImageRenderer : AImageView, IVisualElementRenderer, IImageRendererController
+	internal sealed class ImageRenderer : AImageView, IVisualElementRenderer, IImageRendererController, IViewRenderer
 	{
 		bool _disposed;
 		Image _element;
@@ -16,6 +17,7 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 		int? _defaultLabelFor;
 		VisualElementTracker _visualElementTracker;
 		VisualElementRenderer _visualElementRenderer;
+		readonly MotionEventHelper _motionEventHelper = new MotionEventHelper();
 
 		protected override void Dispose(bool disposing)
 		{
@@ -41,6 +43,9 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 				if (_element != null)
 				{
 					_element.PropertyChanged -= OnElementPropertyChanged;
+
+					if (Platform.GetRenderer(_element) == this)
+						_element.ClearValue(Platform.RendererProperty);
 				}
 			}
 
@@ -58,24 +63,28 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 			base.Invalidate();
 		}
 
-		protected virtual async void OnElementChanged(ElementChangedEventArgs<Image> e)
+		async void OnElementChanged(ElementChangedEventArgs<Image> e)
 		{
 			await TryUpdateBitmap(e.OldElement);
 			UpdateAspect();
 			this.EnsureId();
 
+			ElevationHelper.SetElevation(this, e.NewElement);
+
 			ElementChanged?.Invoke(this, new VisualElementChangedEventArgs(e.OldElement, e.NewElement));
 		}
 
 		public override bool OnTouchEvent(MotionEvent e)
-        {
-            bool handled;
-            var result = _visualElementRenderer.OnTouchEvent(e, Parent, out handled);
+		{
+			if (_visualElementRenderer.OnTouchEvent(e) || base.OnTouchEvent(e))
+			{
+				return true;
+			}
 
-            return handled ? result : base.OnTouchEvent(e);
-        }
+			return _motionEventHelper.HandleMotionEvent(Parent, e);
+		}
 
-		protected virtual Size MinimumSize()
+		Size MinimumSize()
 		{
 			return new Size();
 		}
@@ -103,7 +112,7 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 			Image oldElement = _element;
 			_element = image;
 
-			Internals.Performance.Start();
+			Performance.Start(out string reference);
 
 			if (oldElement != null)
 				oldElement.PropertyChanged -= OnElementPropertyChanged;
@@ -118,8 +127,8 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 				_visualElementRenderer = new VisualElementRenderer(this);
 			}
 
-			Internals.Performance.Stop();
-
+			Performance.Stop(reference);
+			_motionEventHelper.UpdateElement(element);
 			OnElementChanged(new ElementChangedEventArgs<Image>(oldElement, _element));
 
 			_element?.SendViewInitialized(Control);
@@ -135,6 +144,11 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 
 		void IVisualElementRenderer.UpdateLayout() => _visualElementTracker?.UpdateLayout();
 
+		void IViewRenderer.MeasureExactly()
+		{
+			ViewRenderer.MeasureExactly(this, ((IVisualElementRenderer)this).Element, Context);
+		}
+
 		VisualElement IVisualElementRenderer.Element => _element;
 
 		VisualElementTracker IVisualElementRenderer.Tracker => _visualElementTracker;
@@ -145,16 +159,21 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 
 		void IImageRendererController.SkipInvalidate() => _skipInvalidate = true;
 
-		protected AImageView Control => this;
+		AImageView Control => this;
 
 		public event EventHandler<VisualElementChangedEventArgs> ElementChanged;
 		public event EventHandler<PropertyChangedEventArgs> ElementPropertyChanged;
 
+		public ImageRenderer(Context context) : base(context)
+		{
+		}
+
+		[Obsolete("This constructor is obsolete as of version 2.5. Please use ImageRenderer(Context) instead.")]
 		public ImageRenderer() : base(Forms.Context)
 		{
 		}
 
-		protected virtual async void OnElementPropertyChanged(object sender, PropertyChangedEventArgs e)
+		async void OnElementPropertyChanged(object sender, PropertyChangedEventArgs e)
 		{
 			if (e.PropertyName == Image.SourceProperty.PropertyName)
 				await TryUpdateBitmap();
@@ -164,7 +183,7 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 			ElementPropertyChanged?.Invoke(this, e);
 		}
 
-		protected virtual async Task TryUpdateBitmap(Image previous = null)
+		async Task TryUpdateBitmap(Image previous = null)
 		{
 			// By default we'll just catch and log any exceptions thrown by UpdateBitmap so they don't bring down
 			// the application; a custom renderer can override this method and handle exceptions from
@@ -184,7 +203,7 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 			}
 		}
 
-		protected async Task UpdateBitmap(Image previous = null)
+		async Task UpdateBitmap(Image previous = null)
 		{
 			if (_element == null || _disposed)
 			{

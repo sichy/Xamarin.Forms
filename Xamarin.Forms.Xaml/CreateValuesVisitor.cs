@@ -9,9 +9,9 @@ using Xamarin.Forms.Xaml.Internals;
 
 namespace Xamarin.Forms.Xaml
 {
-	internal class CreateValuesVisitor : IXamlNodeVisitor
+	class CreateValuesVisitor : IXamlNodeVisitor
 	{
-		public CreateValuesVisitor(HydratationContext context)
+		public CreateValuesVisitor(HydrationContext context)
 		{
 			Context = context;
 		}
@@ -21,12 +21,14 @@ namespace Xamarin.Forms.Xaml
 			get { return Context.Values; }
 		}
 
-		HydratationContext Context { get; }
+		HydrationContext Context { get; }
 
 		public TreeVisitingMode VisitingMode => TreeVisitingMode.BottomUp;
 		public bool StopOnDataTemplate => true;
 		public bool StopOnResourceDictionary => false;
 		public bool VisitNodeOnDataTemplate => false;
+		public bool SkipChildren(INode node, INode parentNode) => false;
+		public bool IsResourceDictionary(ElementNode node) => typeof(ResourceDictionary).IsAssignableFrom(Context.Types[node]);
 
 		public void Visit(ValueNode node, INode parentNode)
 		{
@@ -112,7 +114,7 @@ namespace Xamarin.Forms.Xaml
 				INode xKey;
 				if (!node.Properties.TryGetValue(XmlName.xKey, out xKey))
 					xKey = null;
-				
+
 				node.Properties.Clear();
 				node.CollectionItems.Clear();
 
@@ -122,8 +124,9 @@ namespace Xamarin.Forms.Xaml
 				Values[node] = value;
 			}
 
-			if (value is BindableObject)
-				NameScope.SetNameScope(value as BindableObject, node.Namescope);
+			var bindableValue = value as BindableObject;
+			if (bindableValue != null && node.Namescope != (parentNode as IElementNode)?.Namescope)
+				NameScope.SetNameScope(bindableValue, node.Namescope);
 		}
 
 		public void Visit(RootNode node, INode parentNode)
@@ -206,7 +209,9 @@ namespace Xamarin.Forms.Xaml
 				for (var i = 0; i < p.Length; i++) {
 					if ((p [i].ParameterType.IsAssignableFrom(types [i])))
 						continue;
-					var op_impl = p [i].ParameterType.GetRuntimeMethod("op_Implicit", new [] { types [i]});
+					var op_impl =  p[i].ParameterType.GetImplicitConversionOperator(fromType: types[i], toType: p[i].ParameterType)
+								?? types[i].GetImplicitConversionOperator(fromType: types[i], toType: p[i].ParameterType);
+
 					if (op_impl == null)
 						return false;
 					arguments [i] = op_impl.Invoke(null, new [] { arguments [i]});
@@ -275,7 +280,7 @@ namespace Xamarin.Forms.Xaml
 
 		static bool IsXaml2009LanguagePrimitive(IElementNode node)
 		{
-			return node.NamespaceURI == "http://schemas.microsoft.com/winfx/2009/xaml";
+			return node.NamespaceURI == XamlParser.X2009Uri;
 		}
 
 		static object CreateLanguagePrimitive(Type nodeType, IElementNode node)

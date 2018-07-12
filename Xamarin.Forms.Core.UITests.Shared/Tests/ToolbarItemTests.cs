@@ -1,4 +1,5 @@
 ﻿using NUnit.Framework;
+using Xamarin.Forms.Controls;
 using Xamarin.Forms.CustomAttributes;
 
 using Xamarin.UITest.Queries;
@@ -19,7 +20,7 @@ namespace Xamarin.Forms.Core.UITests
 #if __ANDROID__
 			isSecondaryMenuOpen = true;
 			//show secondary menu
-			App.Tap(c => c.Class("android.support.v7.widget.ActionMenuPresenter$OverflowMenuButton"));
+			App.Tap(c => c.Class("OverflowMenuButton"));
 #endif
 		}
 
@@ -40,6 +41,11 @@ namespace Xamarin.Forms.Core.UITests
 #if __IOS__
 			btn1Id = "menuIcon";
 			btn4Id = "tb4";
+			if (AppSetup.iOSVersion  >= 9)
+			{
+				btn1Id = "toolbaritem_primary";
+				btn4Id = "toolbaritem_secondary2";
+			}
 #endif
 		}
 
@@ -50,6 +56,7 @@ namespace Xamarin.Forms.Core.UITests
 #if __MACOS__
 			App.Tap(c => c.Button().Index(4));
 #else
+			App.WaitForElement(btn1Id);
 			App.Tap(c => c.Marked(btn1Id));
 #endif
 			var textLabel = App.Query((arg) => arg.Marked("label_id"))[0];
@@ -64,17 +71,16 @@ namespace Xamarin.Forms.Core.UITests
 #if __ANDROID__
 			//App.Query (c => c.Marked (btn4Id))[0];
 #else
+			App.WaitForElement(btn4Id);
 			App.Tap(c => c.Marked(btn4Id));
-			var textLabel = App.Query((arg) => arg.Marked("label_id"))[0];
-			Assert.False(textLabel.Text == "tb4");
+			App.WaitForNoElement(c => c.Text("button 4 new text"));
 #if __MACOS__
 			App.Tap(c => c.Button().Index(6));
 #else
 			App.Tap(c => c.Marked("tb3"));
 #endif
 			App.Tap(c => c.Marked(btn4Id));
-			textLabel = App.Query((arg) => arg.Marked("label_id"))[0];
-			Assert.IsTrue(textLabel.Text == "tb4");
+			App.WaitForElement(c => c.Text("button 4 new text"));
 #if __MACOS__
 			App.Tap(c => c.Button().Index(6));
 #else
@@ -103,7 +109,7 @@ namespace Xamarin.Forms.Core.UITests
 		}
 
 		[Test]
-		public void ToolbarButtonsExist()
+		public void ToolbarButtons_1_Exist()
 		{
 			ShouldHideMenu();
 #if __MACOS__
@@ -129,7 +135,7 @@ namespace Xamarin.Forms.Core.UITests
 		}
 
 		[Test]
-		public void ToolbarButtonsOrder()
+		public void ToolbarButtons_2_Order()
 		{
 			ShouldHideMenu();
 #if __MACOS__

@@ -85,17 +85,32 @@ namespace Xamarin.Forms.Platform.MacOS
 					Control.Frame = new RectangleF(0, 0, (nfloat)Element.Width, labelHeight);
 					break;
 				case TextAlignment.Center:
+
+#if __MOBILE__
 					Control.Frame = new RectangleF(0, 0, (nfloat)Element.Width, (nfloat)Element.Height);
-					break;
-				case TextAlignment.End:
-					nfloat yOffset = 0;
+#else
 					fitSize = Control.SizeThatFits(Element.Bounds.Size.ToSizeF());
 					labelHeight = (nfloat)Math.Min(Bounds.Height, fitSize.Height);
+					var yOffset = (int)(Element.Height / 2 - labelHeight / 2);
+					Control.Frame = new RectangleF(0, 0, (nfloat)Element.Width, (nfloat)Element.Height - yOffset);
+#endif
+					break;
+				case TextAlignment.End:
+					fitSize = Control.SizeThatFits(Element.Bounds.Size.ToSizeF());
+					labelHeight = (nfloat)Math.Min(Bounds.Height, fitSize.Height);
+#if __MOBILE__
+					nfloat yOffset = 0;
 					yOffset = (nfloat)(Element.Height - labelHeight);
 					Control.Frame = new RectangleF(0, yOffset, (nfloat)Element.Width, labelHeight);
+#else
+					Control.Frame = new RectangleF(0, 0, (nfloat)Element.Width, labelHeight);
+#endif
 					break;
 			}
-		}
+
+			Control.RecalculateSpanPositions(Element);
+
+		}		
 
 		protected override void OnElementChanged(ElementChangedEventArgs<Label> e)
 		{
@@ -111,12 +126,11 @@ namespace Xamarin.Forms.Platform.MacOS
 #endif
 				}
 
+				UpdateLineBreakMode();
+				UpdateAlignment();
 				UpdateText();
 				UpdateTextColor();
 				UpdateFont();
-
-				UpdateLineBreakMode();
-				UpdateAlignment();
 			}
 
 			base.OnElementChanged(e);
@@ -140,6 +154,10 @@ namespace Xamarin.Forms.Platform.MacOS
 				UpdateText();
 			else if (e.PropertyName == Label.LineBreakModeProperty.PropertyName)
 				UpdateLineBreakMode();
+			else if (e.PropertyName == VisualElement.FlowDirectionProperty.PropertyName)
+				UpdateAlignment();
+			else if (e.PropertyName == Label.LineHeightProperty.PropertyName)
+				UpdateText();
 		}
 
 #if __MOBILE__
@@ -178,9 +196,9 @@ namespace Xamarin.Forms.Platform.MacOS
 		void UpdateAlignment()
 		{
 #if __MOBILE__
-			Control.TextAlignment = Element.HorizontalTextAlignment.ToNativeTextAlignment();
+			Control.TextAlignment = Element.HorizontalTextAlignment.ToNativeTextAlignment(((IVisualElementController)Element).EffectiveFlowDirection);
 #else
-			Control.Alignment = Element.HorizontalTextAlignment.ToNativeTextAlignment();
+			Control.Alignment = Element.HorizontalTextAlignment.ToNativeTextAlignment(((IVisualElementController)Element).EffectiveFlowDirection);
 #endif
 		}
 
@@ -250,25 +268,23 @@ namespace Xamarin.Forms.Platform.MacOS
 		void UpdateText()
 		{
 			_perfectSizeValid = false;
-
 			var values = Element.GetValues(Label.FormattedTextProperty, Label.TextProperty, Label.TextColorProperty);
+
 			var formatted = values[0] as FormattedString;
+			if (formatted == null && Element.LineHeight >= 0)
+				formatted = (string)values[1];
+
 			if (formatted != null)
 			{
 #if __MOBILE__
-				Control.AttributedText = formatted.ToAttributed(Element, (Color)values[2]);
+				Control.AttributedText = formatted.ToAttributed(Element, (Color)values[2], Element.LineHeight);
 #else
-				Control.AttributedStringValue = formatted.ToAttributed(Element, (Color)values[2]);
+				Control.AttributedStringValue = formatted.ToAttributed(Element, (Color)values[2], Element.LineHeight);
 #endif
 				isTextFormatted = true;
 			}
 			else
 			{
-				if (isTextFormatted)
-				{
-					UpdateFont();
-					UpdateTextColor();
-				}
 #if __MOBILE__
 				Control.Text = (string)values[1];
 #else
@@ -281,7 +297,7 @@ namespace Xamarin.Forms.Platform.MacOS
 
 		void UpdateFont()
 		{
-			if(isTextFormatted)
+			if (isTextFormatted)
 				return;
 			_perfectSizeValid = false;
 
@@ -297,7 +313,7 @@ namespace Xamarin.Forms.Platform.MacOS
 		{
 			if (isTextFormatted)
 				return;
-			
+
 			_perfectSizeValid = false;
 
 			var textColor = (Color)Element.GetValue(Label.TextColorProperty);
@@ -310,7 +326,6 @@ namespace Xamarin.Forms.Platform.MacOS
 #endif
 			UpdateLayout();
 		}
-
 		void UpdateLayout()
 		{
 #if __MOBILE__

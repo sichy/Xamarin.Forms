@@ -2,23 +2,23 @@
 using System.ComponentModel;
 using System.Threading.Tasks;
 using Windows.UI.Xaml;
-using Windows.UI.Xaml.Automation;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Data;
 using Windows.UI.Xaml.Media;
 using Xamarin.Forms.PlatformConfiguration.WindowsSpecific;
 using Specifics = Xamarin.Forms.PlatformConfiguration.WindowsSpecific.MasterDetailPage;
+using WImageSource = Windows.UI.Xaml.Media.ImageSource;
 
 namespace Xamarin.Forms.Platform.UWP
 {
-	public class MasterDetailPageRenderer : IVisualElementRenderer, IToolbarProvider, ITitleProvider, IToolBarForegroundBinder
+	public class MasterDetailPageRenderer : IVisualElementRenderer, IToolbarProvider, ITitleProvider, ITitleIconProvider, ITitleViewProvider, IToolBarForegroundBinder
 	{
 		Page _master;
 		Page _detail;
 		bool _showTitle;
 
 		VisualElementTracker<Page, FrameworkElement> _tracker;
-
+		
 		public MasterDetailControl Control { get; private set; }
 
 		public MasterDetailPage Element { get; private set; }
@@ -98,6 +98,27 @@ namespace Xamarin.Forms.Platform.UWP
 			get { return Element; }
 		}
 
+		WImageSource ITitleIconProvider.TitleIcon
+		{
+			get { return Control?.DetailTitleIcon; }
+
+			set
+			{
+				if (Control != null)
+					Control.DetailTitleIcon = value;
+			}
+		}
+
+		View ITitleViewProvider.TitleView
+		{
+			get => Control?.DetailTitleView;
+			set
+			{
+				if (Control != null)
+					Control.DetailTitleView = value;
+			}
+		}
+
 #pragma warning disable 0067 // Revisit: Can't remove; required by interface
 		public event EventHandler<VisualElementChangedEventArgs> ElementChanged;
 #pragma warning restore
@@ -169,11 +190,17 @@ namespace Xamarin.Forms.Platform.UWP
 				UpdateMode();
 			else if(e.PropertyName ==  PlatformConfiguration.WindowsSpecific.Page.ToolbarPlacementProperty.PropertyName)
 				UpdateToolbarPlacement();
+			else if (e.PropertyName == VisualElement.FlowDirectionProperty.PropertyName)
+				UpdateFlowDirection();
 		}
 
 		void ClearDetail()
 		{
 			((ITitleProvider)this).ShowTitle = false;
+
+			var titleView = ((ITitleViewProvider)this).TitleView;
+			titleView?.ClearValue(Platform.RendererProperty);
+			titleView = null;
 
 			if (_detail == null)
 				return;
@@ -208,6 +235,7 @@ namespace Xamarin.Forms.Platform.UWP
 
 			Element.SendAppearing();
 			UpdateBounds();
+			UpdateFlowDirection();
 		}
 
 		void OnControlUnloaded(object sender, RoutedEventArgs routedEventArgs)
@@ -217,8 +245,18 @@ namespace Xamarin.Forms.Platform.UWP
 
 		void OnDetailPropertyChanged(object sender, PropertyChangedEventArgs e)
 		{
-			if (e.PropertyName == Page.TitleProperty.PropertyName || e.PropertyName == NavigationPage.CurrentPageProperty.PropertyName)
+			if (e.PropertyName == Page.TitleProperty.PropertyName)
 				UpdateDetailTitle();
+			else if (e.PropertyName == NavigationPage.TitleIconProperty.PropertyName)
+				UpdateDetailTitleIcon();
+			else if (e.PropertyName == NavigationPage.TitleViewProperty.PropertyName)
+				UpdateDetailTitleView();
+			else if (e.PropertyName == NavigationPage.CurrentPageProperty.PropertyName)
+			{
+				UpdateDetailTitle();
+				UpdateDetailTitleIcon();
+				UpdateDetailTitleView();
+			}
 		}
 
 		void OnIsPaneOpenChanged(DependencyObject sender, DependencyProperty dp)
@@ -266,6 +304,8 @@ namespace Xamarin.Forms.Platform.UWP
 
 			Control.Detail = element;
 			UpdateDetailTitle();
+			UpdateDetailTitleIcon();
+			UpdateDetailTitleView();
 		}
 
 		void UpdateDetailTitle()
@@ -275,6 +315,29 @@ namespace Xamarin.Forms.Platform.UWP
 
 			Control.DetailTitle = (_detail as NavigationPage)?.CurrentPage?.Title ?? _detail.Title ?? Element?.Title;
 			(this as ITitleProvider).ShowTitle = !string.IsNullOrEmpty(Control.DetailTitle);
+		}
+
+		async void UpdateDetailTitleIcon()
+		{
+			if (_detail == null)
+				return;
+
+			Control.DetailTitleIcon = await NavigationPage.GetTitleIcon(_detail).ToWindowsImageSource();
+			Control.InvalidateMeasure();
+		}
+
+		void UpdateDetailTitleView()
+		{
+			if (_detail == null)
+				return;
+
+			Control.DetailTitleView = NavigationPage.GetTitleView(_detail) as View;
+			Control.InvalidateMeasure();
+		}
+
+		void UpdateFlowDirection()
+		{
+			Control.UpdateFlowDirection(Element);
 		}
 
 		void UpdateIsPresented()
@@ -310,6 +373,8 @@ namespace Xamarin.Forms.Platform.UWP
 		void UpdateMode()
 		{
 			UpdateDetailTitle();
+			UpdateDetailTitleIcon();
+			UpdateDetailTitleView();
 			Control.CollapseStyle = Element.OnThisPlatform().GetCollapseStyle();
 			Control.CollapsedPaneWidth = Element.OnThisPlatform().CollapsedPaneWidth();
 			Control.ShouldShowSplitMode = Element.ShouldShowSplitMode;
@@ -324,6 +389,9 @@ namespace Xamarin.Forms.Platform.UWP
 		{
 			// Enforce consistency rules on toolbar
 			Control.ShouldShowToolbar = _detail is NavigationPage || _master is NavigationPage;
+			if(_detail is NavigationPage _detailNav)
+				Control.ShouldShowNavigationBar = NavigationPage.GetHasNavigationBar(_detailNav.CurrentPage);
+			
 		}
 
 		public void BindForegroundColor(AppBar appBar)

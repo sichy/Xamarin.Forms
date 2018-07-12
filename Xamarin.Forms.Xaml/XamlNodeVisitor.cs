@@ -14,6 +14,8 @@ namespace Xamarin.Forms.Xaml
 		void Visit(ElementNode node, INode parentNode);
 		void Visit(RootNode node, INode parentNode);
 		void Visit(ListNode node, INode parentNode);
+		bool SkipChildren(INode node, INode parentNode);
+		bool IsResourceDictionary(ElementNode node);
 	}
 
 	enum TreeVisitingMode {
@@ -35,32 +37,15 @@ namespace Xamarin.Forms.Xaml
 
 		public TreeVisitingMode VisitingMode { get; }
 		public bool StopOnDataTemplate { get; }
-		public bool StopOnResourceDictionary { get; private set; }
+		public bool StopOnResourceDictionary { get; }
 		public bool VisitNodeOnDataTemplate { get; }
 
-		public void Visit(ValueNode node, INode parentNode)
-		{
-			action(node, parentNode);
-		}
-
-		public void Visit(MarkupNode node, INode parentNode)
-		{
-			action(node, parentNode);
-		}
-
-		public void Visit(ElementNode node, INode parentNode)
-		{
-			action(node, parentNode);
-		}
-
-		public void Visit(RootNode node, INode parentNode)
-		{
-			action(node, parentNode);
-		}
-
-		public void Visit(ListNode node, INode parentNode)
-		{
-			action(node, parentNode);
-		}
+		public void Visit(ValueNode node, INode parentNode) => action(node, parentNode);
+		public void Visit(MarkupNode node, INode parentNode) => action(node, parentNode);
+		public void Visit(ElementNode node, INode parentNode) => action(node, parentNode);
+		public void Visit(RootNode node, INode parentNode) => action(node, parentNode);
+		public void Visit(ListNode node, INode parentNode) => action(node, parentNode);
+		public bool SkipChildren(INode node, INode parentNode) => false;
+		public bool IsResourceDictionary(ElementNode node) => false;
 	}
 }

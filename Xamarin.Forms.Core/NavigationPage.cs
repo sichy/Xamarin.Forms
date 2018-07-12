@@ -27,6 +27,8 @@ namespace Xamarin.Forms
 
 		public static readonly BindableProperty TitleIconProperty = BindableProperty.CreateAttached("TitleIcon", typeof(FileImageSource), typeof(NavigationPage), default(FileImageSource));
 
+		public static readonly BindableProperty TitleViewProperty = BindableProperty.CreateAttached("TitleView", typeof(View), typeof(NavigationPage), null, propertyChanging: TitleViewPropertyChanging);
+
 		static readonly BindablePropertyKey CurrentPagePropertyKey = BindableProperty.CreateReadOnly("CurrentPage", typeof(Page), typeof(NavigationPage), null);
 		public static readonly BindableProperty CurrentPageProperty = CurrentPagePropertyKey.BindableProperty;
 
@@ -103,6 +105,24 @@ namespace Xamarin.Forms
 			private set { SetValue(RootPagePropertyKey, value); }
 		}
 
+		static void TitleViewPropertyChanging(BindableObject bindable, object oldValue, object newValue)
+		{
+			if (oldValue == newValue)
+				return;
+
+			if (oldValue != null)
+			{
+				var oldElem = (View)oldValue;
+				oldElem.Parent = null;
+			}
+
+			if (newValue != null && bindable != null)
+			{
+				var newElem = (View)newValue;
+				newElem.Parent = (Page)bindable;
+			}
+		}
+
 		public static string GetBackButtonTitle(BindableObject page)
 		{
 			return (string)page.GetValue(BackButtonTitleProperty);
@@ -125,6 +145,11 @@ namespace Xamarin.Forms
 			return (FileImageSource)bindable.GetValue(TitleIconProperty);
 		}
 
+		public static View GetTitleView(BindableObject bindable)
+		{
+			return (View)bindable.GetValue(TitleViewProperty);
+		}
+
 		public Task<Page> PopAsync()
 		{
 			return PopAsync(true);
@@ -132,21 +157,19 @@ namespace Xamarin.Forms
 
 		public async Task<Page> PopAsync(bool animated)
 		{
+			var tcs = new TaskCompletionSource<bool>();
 			if (CurrentNavigationTask != null && !CurrentNavigationTask.IsCompleted)
 			{
-				var tcs = new TaskCompletionSource<bool>();
-				Task oldTask = CurrentNavigationTask;
+				var oldTask = CurrentNavigationTask;
 				CurrentNavigationTask = tcs.Task;
 				await oldTask;
-
-				Page page = await PopAsyncInner(animated, false);
-				tcs.SetResult(true);
-				return page;
 			}
+			else
+				CurrentNavigationTask = tcs.Task;
 
-			Task<Page> result = PopAsyncInner(animated, false);
-			CurrentNavigationTask = result;
-			return await result;
+			var result = await PopAsyncInner(animated, false);
+			tcs.SetResult(true);
+			return result;
 		}
 
 		public event EventHandler<NavigationEventArgs> Popped;
@@ -224,6 +247,11 @@ namespace Xamarin.Forms
 			bindable.SetValue(TitleIconProperty, value);
 		}
 
+		public static void SetTitleView(BindableObject bindable, View value)
+		{
+			bindable.SetValue(TitleViewProperty, value);
+		}
+
 		protected override bool OnBackButtonPressed()
 		{
 			if (CurrentPage.SendBackButtonPressed())
@@ -250,6 +278,16 @@ namespace Xamarin.Forms
 			}
 
 			var page = (Page)InternalChildren.Last();
+
+			return await (this as INavigationPageController).RemoveAsyncInner(page, animated, fast);
+		}
+
+		async Task<Page> INavigationPageController.RemoveAsyncInner(Page page, bool animated, bool fast)
+		{
+			if (StackDepth == 1)
+			{
+				return null;
+			}
 
 			var args = new NavigationRequestedEventArgs(page, animated);
 

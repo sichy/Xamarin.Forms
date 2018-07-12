@@ -16,10 +16,12 @@ namespace Xamarin.Forms.Platform.MacOS
 				SetNativeControl(new NSProgressIndicator
 				{
 					IsDisplayedWhenStopped = true,
+					Indeterminate = false,
 					Style = NSProgressIndicatorStyle.Bar,
 					MinValue = 0,
 					MaxValue = 1
 				});
+			UpdateProgressColor();
 			UpdateProgress();
 		}
 
@@ -27,8 +29,15 @@ namespace Xamarin.Forms.Platform.MacOS
 		{
 			base.OnElementPropertyChanged(sender, e);
 
-			if (e.PropertyName == ProgressBar.ProgressProperty.PropertyName)
+			if (e.PropertyName == ProgressBar.ProgressColorProperty.PropertyName)
+				UpdateProgressColor();
+			else if (e.PropertyName == ProgressBar.ProgressProperty.PropertyName)
 				UpdateProgress();
+		}
+
+		void UpdateProgressColor()
+		{
+			SetBackgroundColor(Element.ProgressColor);
 		}
 
 		protected override void SetBackgroundColor(Color color)
@@ -36,13 +45,18 @@ namespace Xamarin.Forms.Platform.MacOS
 			if (Control == null)
 				return;
 
-			if (s_currentColorFilter == null && color.IsDefault)
-				return;
-
 			if (color.IsDefault)
-				Control.ContentFilters = new CIFilter[0];
+			{
+				if (s_currentColorFilter != null && Element.BackgroundColor.IsDefault && Element.ProgressColor.IsDefault)
+				{
+					Control.ContentFilters = new CIFilter[0];
+					s_currentColor = null;
+				}
 
-			var newColor = Element.BackgroundColor.ToNSColor();
+				return;
+			}
+
+			var newColor = color.ToNSColor();
 			if (Equals(s_currentColor, newColor))
 				return;
 

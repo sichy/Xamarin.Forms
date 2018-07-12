@@ -1,19 +1,19 @@
 using System;
 using System.ComponentModel;
 using Android.Views;
+using Xamarin.Forms.Internals;
 using AView = Android.Views.View;
-using Object = Java.Lang.Object;
 
 namespace Xamarin.Forms.Platform.Android.FastRenderers
 {
 	// TODO hartez 2017/03/03 14:11:17 It's weird that this class is called VisualElementRenderer but it doesn't implement that interface. The name should probably be different.
-	public class VisualElementRenderer : IDisposable, IEffectControlProvider
+	internal sealed class VisualElementRenderer : IDisposable, IEffectControlProvider
 	{
 		bool _disposed;
 		
 		IVisualElementRenderer _renderer;
 		readonly GestureManager _gestureManager;
-		readonly AutomationPropertiesProvider _automatiomPropertiesProvider;
+		readonly AutomationPropertiesProvider _automationPropertiesProvider;
 		readonly EffectControlProvider _effectControlProvider;
 
 		public VisualElementRenderer(IVisualElementRenderer renderer)
@@ -22,12 +22,13 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 			_renderer.ElementPropertyChanged += OnElementPropertyChanged;
 			_renderer.ElementChanged += OnElementChanged;
 			_gestureManager = new GestureManager(_renderer);
-			_automatiomPropertiesProvider = new AutomationPropertiesProvider(_renderer);
+			_automationPropertiesProvider = new AutomationPropertiesProvider(_renderer);
+
 			_effectControlProvider = new EffectControlProvider(_renderer?.View);
 		}
 
 		VisualElement Element => _renderer?.Element;
-		
+
 		AView Control => _renderer?.View;
 
 		void IEffectControlProvider.RegisterEffect(Effect effect)
@@ -43,9 +44,17 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 			Control.SetBackgroundColor((color ?? Element.BackgroundColor).ToAndroid());
 		}
 
-	    public bool OnTouchEvent(MotionEvent e, IViewParent parent, out bool handled)
+		void UpdateFlowDirection()
+		{
+			if (_disposed)
+				return;
+
+			Control.UpdateFlowDirection(Element);
+		}
+
+		public bool OnTouchEvent(MotionEvent e)
 	    {
-	        return _gestureManager.OnTouchEvent(e, parent, out handled);
+	        return _gestureManager.OnTouchEvent(e);
 	    }
 
 	    public void Dispose()
@@ -54,7 +63,7 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 			GC.SuppressFinalize(this);
 		}
 
-		protected void Dispose(bool disposing)
+		void Dispose(bool disposing)
 		{
 			if (_disposed)
 				return;
@@ -64,7 +73,7 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 			if (disposing)
 			{
 				_gestureManager?.Dispose();
-				_automatiomPropertiesProvider?.Dispose();
+				_automationPropertiesProvider?.Dispose();
 
 				if (_renderer != null)
 				{
@@ -86,13 +95,18 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 			{
 				e.NewElement.PropertyChanged += OnElementPropertyChanged;
 				UpdateBackgroundColor();
+				UpdateFlowDirection();
 			}
+
+			EffectUtilities.RegisterEffectControlProvider(this, e.OldElement, e.NewElement);
 		}
 
 		void OnElementPropertyChanged(object sender, PropertyChangedEventArgs e)
 		{
 			if (e.PropertyName == VisualElement.BackgroundColorProperty.PropertyName)
 				UpdateBackgroundColor();
+			else if (e.PropertyName == VisualElement.FlowDirectionProperty.PropertyName)
+				UpdateFlowDirection();
 		}
 	}
 }

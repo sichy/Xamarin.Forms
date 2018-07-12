@@ -63,6 +63,23 @@ namespace Xamarin.Forms.Platform.iOS
 			Element.Layout(new Rectangle(Element.X, Element.Y, size.Width, size.Height));
 		}
 
+		public override void ViewSafeAreaInsetsDidChange()
+		{
+
+			var page = (Element as Page);
+			if (page != null && Forms.IsiOS11OrNewer)
+			{
+				var insets = NativeView.SafeAreaInsets;
+				if(page.Parent is TabbedPage)
+				{
+					insets.Bottom = 0;
+				}
+				page.On<PlatformConfiguration.iOS>().SetSafeAreaInsets(new Thickness(insets.Left, insets.Top, insets.Right, insets.Bottom));
+			
+			}
+			base.ViewSafeAreaInsetsDidChange();
+		}
+
 		public UIViewController ViewController => _disposed ? null : this;
 
 		public override void ViewDidAppear(bool animated)
@@ -241,7 +258,7 @@ namespace Xamarin.Forms.Platform.iOS
 			string bgImage = ((Page)Element).BackgroundImage;
 			if (!string.IsNullOrEmpty(bgImage))
 			{
-				View.BackgroundColor = UIColor.FromPatternImage(UIImage.FromBundle(bgImage));
+				View.BackgroundColor = UIColor.FromPatternImage(UIImage.FromBundle(bgImage) ?? throw new Exception($"Image: File '{bgImage}' not found in app bundle"));
 				return;
 			}
 			Color bgColor = Element.BackgroundColor;

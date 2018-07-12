@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using Android.Animation;
+using Android.Content;
 using Android.Graphics;
 using Android.Views;
 using Android.Widget;
@@ -15,12 +16,21 @@ namespace Xamarin.Forms.Platform.Android
 	{
 		ScrollViewContainer _container;
 		HorizontalScrollView _hScrollView;
+		ScrollBarVisibility _defaultHorizontalScrollVisibility = 0;
+		ScrollBarVisibility _defaultVerticalScrollVisibility = 0;
 		bool _isAttached;
 		internal bool ShouldSkipOnTouch;
 		bool _isBidirectional;
 		ScrollView _view;
 		int _previousBottom;
+		bool _isEnabled;
+		bool _disposed;
 
+		public ScrollViewRenderer(Context context) : base(context)
+		{
+		}
+
+		[Obsolete("This constructor is obsolete as of version 2.5. Please use ScrollViewRenderer(Context) instead.")]
 		public ScrollViewRenderer() : base(Forms.Context)
 		{
 		}
@@ -71,7 +81,7 @@ namespace Xamarin.Forms.Platform.Android
 				if (_container == null)
 				{
 					Tracker = new VisualElementTracker(this);
-					_container = new ScrollViewContainer(_view, Forms.Context);
+					_container = new ScrollViewContainer(_view, Context);
 				}
 
 				_view.PropertyChanged += HandlePropertyChanged;
@@ -79,8 +89,10 @@ namespace Xamarin.Forms.Platform.Android
 
 				LoadContent();
 				UpdateBackgroundColor();
-
 				UpdateOrientation();
+				UpdateIsEnabled();
+				UpdateHorizontalScrollBarVisibility();
+				UpdateVerticalScrollBarVisibility();
 
 				element.SendViewInitialized(this);
 
@@ -129,6 +141,9 @@ namespace Xamarin.Forms.Platform.Android
 
 		public override bool OnTouchEvent(MotionEvent ev)
 		{
+			if (!_isEnabled)
+				return false;
+
 			if (ShouldSkipOnTouch)
 			{
 				ShouldSkipOnTouch = false;
@@ -143,36 +158,43 @@ namespace Xamarin.Forms.Platform.Android
 			if (_isBidirectional && !Element.InputTransparent)
 			{
 				float dX = LastX - ev.RawX;
-				float dY = LastY - ev.RawY;
+
 				LastY = ev.RawY;
 				LastX = ev.RawX;
 				if (ev.Action == MotionEventActions.Move)
 				{
-					ScrollBy(0, (int)dY);
 					foreach (AHorizontalScrollView child in this.GetChildrenOfType<AHorizontalScrollView>())
 					{
 						child.ScrollBy((int)dX, 0);
 						break;
 					}
+					// Fall through to base.OnTouchEvent, it'll take care of the Y scrolling				
 				}
 			}
+
 			return base.OnTouchEvent(ev);
 		}
 
 		protected override void Dispose(bool disposing)
 		{
-			base.Dispose(disposing);
+			if (_disposed)
+			{
+				return;
+			}
 
-			SetElement(null);
+			_disposed = true;
 
 			if (disposing)
 			{
-				Tracker.Dispose();
+				SetElement(null);
+				Tracker?.Dispose();
 				Tracker = null;
 				RemoveAllViews();
-				_container.Dispose();
+				_container?.Dispose();
 				_container = null;
 			}
+
+			base.Dispose(disposing);
 		}
 
 		protected override void OnAttachedToWindow()
@@ -214,8 +236,8 @@ namespace Xamarin.Forms.Platform.Android
 		protected override void OnScrollChanged(int l, int t, int oldl, int oldt)
 		{
 			base.OnScrollChanged(l, t, oldl, oldt);
-
-			UpdateScrollPosition(Forms.Context.FromPixels(l), Forms.Context.FromPixels(t));
+			var context = Context;
+			UpdateScrollPosition(context.FromPixels(l), context.FromPixels(t));
 		}
 
 		internal void UpdateScrollPosition(double x, double y)
@@ -224,11 +246,13 @@ namespace Xamarin.Forms.Platform.Android
 			{
 				if (_view.Orientation == ScrollOrientation.Both)
 				{
+					var context = Context;
+
 					if (x == 0)
-						x = Forms.Context.FromPixels(_hScrollView.ScrollX);
+						x = context.FromPixels(_hScrollView.ScrollX);
 
 					if (y == 0)
-						y = Forms.Context.FromPixels(ScrollY);
+						y = context.FromPixels(ScrollY);
 				}
 
 				Controller.SetScrolledPosition(x, y);
@@ -263,6 +287,22 @@ namespace Xamarin.Forms.Platform.Android
 				UpdateBackgroundColor();
 			else if (e.PropertyName == ScrollView.OrientationProperty.PropertyName)
 				UpdateOrientation();
+			else if (e.PropertyName == VisualElement.IsEnabledProperty.PropertyName)
+				UpdateIsEnabled();
+			else if (e.PropertyName == ScrollView.HorizontalScrollBarVisibilityProperty.PropertyName)
+				UpdateHorizontalScrollBarVisibility();
+			else if (e.PropertyName == ScrollView.VerticalScrollBarVisibilityProperty.PropertyName)
+				UpdateVerticalScrollBarVisibility();
+		}
+
+		void UpdateIsEnabled()
+		{
+			if (Element == null)
+			{
+				return;
+			}
+
+			_isEnabled = Element.IsEnabled;
 		}
 
 		void LoadContent()
@@ -291,16 +331,17 @@ namespace Xamarin.Forms.Platform.Android
 					break;
 			}
 
-			var x = (int)Forms.Context.ToPixels(e.ScrollX);
-			var y = (int)Forms.Context.ToPixels(e.ScrollY);
+			var context = Context;
+			var x = (int)context.ToPixels(e.ScrollX);
+			var y = (int)context.ToPixels(e.ScrollY);
 			int currentX = _view.Orientation == ScrollOrientation.Horizontal || _view.Orientation == ScrollOrientation.Both ? _hScrollView.ScrollX : ScrollX;
 			int currentY = _view.Orientation == ScrollOrientation.Vertical || _view.Orientation == ScrollOrientation.Both ? ScrollY : _hScrollView.ScrollY;
 			if (e.Mode == ScrollToMode.Element)
 			{
 				Point itemPosition = Controller.GetScrollPositionForElement(e.Element as VisualElement, e.Position);
 
-				x = (int)Forms.Context.ToPixels(itemPosition.X);
-				y = (int)Forms.Context.ToPixels(itemPosition.Y);
+				x = (int)context.ToPixels(itemPosition.X);
+				y = (int)context.ToPixels(itemPosition.Y);
 			}
 			if (e.ShouldAnimate)
 			{
@@ -397,6 +438,39 @@ namespace Xamarin.Forms.Platform.Android
 					AddView(_container);
 				}
 			}
+		}
+
+		void UpdateHorizontalScrollBarVisibility()
+		{
+			if (_hScrollView != null)
+			{
+				if (_defaultHorizontalScrollVisibility == 0)
+				{
+					_defaultHorizontalScrollVisibility = _hScrollView.HorizontalScrollBarEnabled ? ScrollBarVisibility.Always : ScrollBarVisibility.Never;
+				}
+
+				var newHorizontalScrollVisiblility = _view.HorizontalScrollBarVisibility;
+
+				if (newHorizontalScrollVisiblility == ScrollBarVisibility.Default)
+				{
+					newHorizontalScrollVisiblility = _defaultHorizontalScrollVisibility;
+				}
+
+				_hScrollView.HorizontalScrollBarEnabled = newHorizontalScrollVisiblility == ScrollBarVisibility.Always;
+			}
+		}
+
+		void UpdateVerticalScrollBarVisibility()
+		{
+			if (_defaultVerticalScrollVisibility == 0)
+				_defaultVerticalScrollVisibility = VerticalScrollBarEnabled ? ScrollBarVisibility.Always : ScrollBarVisibility.Never;
+
+			var newVerticalScrollVisibility = _view.VerticalScrollBarVisibility;
+
+			if (newVerticalScrollVisibility == ScrollBarVisibility.Default)
+				newVerticalScrollVisibility = _defaultVerticalScrollVisibility;
+
+			VerticalScrollBarEnabled = newVerticalScrollVisibility == ScrollBarVisibility.Always;
 		}
 	}
 }

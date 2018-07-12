@@ -1,7 +1,12 @@
 ﻿using System;
 using System.ComponentModel;
+using Android.Content.Res;
 using Android.Graphics.Drawables;
+using Android.OS;
+using Xamarin.Forms.PlatformConfiguration.AndroidSpecific;
+using Specifics = Xamarin.Forms.PlatformConfiguration.AndroidSpecific;
 using AButton = Android.Widget.Button;
+using AColor = Android.Graphics.Color;
 
 namespace Xamarin.Forms.Platform.Android
 {
@@ -9,6 +14,7 @@ namespace Xamarin.Forms.Platform.Android
 	{
 		Drawable _defaultDrawable;
 		ButtonDrawable _backgroundDrawable;
+		RippleDrawable _rippleDrawable;
 		Button _button;
 		AButton _nativeButton;
 		bool _drawableEnabled;
@@ -36,7 +42,18 @@ namespace Xamarin.Forms.Platform.Android
 
 		public void UpdateDrawable()
 		{
-			if (_button.BackgroundColor == Color.Default)
+			if (_button == null || _nativeButton == null)
+				return;
+
+			bool cornerRadiusIsDefault = !_button.IsSet(Button.CornerRadiusProperty) || (_button.CornerRadius == (int)Button.CornerRadiusProperty.DefaultValue || _button.CornerRadius == ButtonDrawable.DefaultCornerRadius);
+			bool backgroundColorIsDefault = !_button.IsSet(VisualElement.BackgroundColorProperty) || _button.BackgroundColor == (Color)VisualElement.BackgroundColorProperty.DefaultValue;
+			bool borderColorIsDefault = !_button.IsSet(Button.BorderColorProperty) || _button.BorderColor == (Color)Button.BorderColorProperty.DefaultValue;
+			bool borderWidthIsDefault = !_button.IsSet(Button.BorderWidthProperty) || _button.BorderWidth == (double)Button.BorderWidthProperty.DefaultValue;
+
+			if (backgroundColorIsDefault
+				&& cornerRadiusIsDefault
+				&& borderColorIsDefault
+				&& borderWidthIsDefault)
 			{
 				if (!_drawableEnabled)
 					return;
@@ -49,9 +66,24 @@ namespace Xamarin.Forms.Platform.Android
 			else
 			{
 				if (_backgroundDrawable == null)
-					_backgroundDrawable = new ButtonDrawable();
+					_backgroundDrawable = new ButtonDrawable(_nativeButton.Context.ToPixels, Forms.GetColorButtonNormal(_nativeButton.Context));
 
 				_backgroundDrawable.Button = _button;
+
+				var useDefaultPadding = _button.OnThisPlatform().UseDefaultPadding();
+
+				int paddingTop = useDefaultPadding ? _nativeButton.PaddingTop : 0;
+				int paddingLeft = useDefaultPadding ? _nativeButton.PaddingLeft : 0;
+
+				var useDefaultShadow = _button.OnThisPlatform().UseDefaultShadow();
+
+				float shadowRadius = useDefaultShadow ? 2 : _nativeButton.ShadowRadius;
+				float shadowDx = useDefaultShadow ? 0 : _nativeButton.ShadowDx;
+				float shadowDy = useDefaultShadow ? 4 : _nativeButton.ShadowDy;
+				AColor shadowColor = useDefaultShadow ? _backgroundDrawable.PressedBackgroundColor.ToAndroid() : _nativeButton.ShadowColor;
+
+				_backgroundDrawable.SetPadding(paddingTop, paddingLeft)
+								   .SetShadow(shadowDy, shadowDx, shadowColor, shadowRadius);
 
 				if (_drawableEnabled)
 					return;
@@ -59,7 +91,18 @@ namespace Xamarin.Forms.Platform.Android
 				if (_defaultDrawable == null)
 					_defaultDrawable = _nativeButton.Background;
 
-				_nativeButton.SetBackground(_backgroundDrawable);
+				if (Forms.IsLollipopOrNewer)
+				{
+					var rippleColor = _backgroundDrawable.PressedBackgroundColor.ToAndroid();
+
+					_rippleDrawable = new RippleDrawable(ColorStateList.ValueOf(rippleColor), _backgroundDrawable, null);
+					_nativeButton.SetBackground(_rippleDrawable);
+				}
+				else
+				{
+					_nativeButton.SetBackground(_backgroundDrawable);
+				}
+
 				_drawableEnabled = true;
 			}
 
@@ -71,15 +114,14 @@ namespace Xamarin.Forms.Platform.Android
 			if (_drawableEnabled)
 			{
 				_drawableEnabled = false;
-				_backgroundDrawable.Reset();
+				_backgroundDrawable?.Reset();
 				_backgroundDrawable = null;
+				_rippleDrawable = null;
 			}
 		}
 
 		public void UpdateBackgroundColor()
 		{
-			if (_button == null)
-				return;
 			UpdateDrawable();
 		}
 
@@ -98,6 +140,8 @@ namespace Xamarin.Forms.Platform.Android
 					_backgroundDrawable = null;
 					_defaultDrawable?.Dispose();
 					_defaultDrawable = null;
+					_rippleDrawable?.Dispose();
+					_rippleDrawable = null;
 					if (_button != null)
 					{
 						_button.PropertyChanged -= ButtonPropertyChanged;
@@ -113,8 +157,10 @@ namespace Xamarin.Forms.Platform.Android
 		{
 			if (e.PropertyName.Equals(Button.BorderColorProperty.PropertyName) ||
 				e.PropertyName.Equals(Button.BorderWidthProperty.PropertyName) ||
-				e.PropertyName.Equals(Button.BorderRadiusProperty.PropertyName) ||
-				e.PropertyName.Equals(VisualElement.BackgroundColorProperty.PropertyName))
+				e.PropertyName.Equals(Button.CornerRadiusProperty.PropertyName) ||
+				e.PropertyName.Equals(VisualElement.BackgroundColorProperty.PropertyName) ||
+				e.PropertyName.Equals(Specifics.Button.UseDefaultPaddingProperty.PropertyName) ||
+				e.PropertyName.Equals(Specifics.Button.UseDefaultShadowProperty.PropertyName))
 			{
 				Reset();
 				UpdateDrawable();

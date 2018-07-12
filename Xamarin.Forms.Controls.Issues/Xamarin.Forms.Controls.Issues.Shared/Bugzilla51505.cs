@@ -6,12 +6,6 @@ using Xamarin.UITest;
 using NUnit.Framework;
 #endif
 
-// Apply the default category of "Issues" to all of the tests in this assembly
-// We use this as a catch-all for tests which haven't been individually categorized
-#if UITEST
-[assembly: NUnit.Framework.Category("Issues")]
-#endif
-
 namespace Xamarin.Forms.Controls.Issues
 {
 	[Preserve(AllMembers = true)]
@@ -22,7 +16,7 @@ namespace Xamarin.Forms.Controls.Issues
 
 		protected override void Init()
 		{
-			var effect = Effect.Resolve("XamControl.BorderEffect");
+			var effect = Effect.Resolve($"{Issues.Effects.ResolutionGroupName}.BorderEffect");
 
 			var button = new Button { Text = "Click me", AutomationId = ButtonId };
 			button.Clicked += async (sender, e) =>

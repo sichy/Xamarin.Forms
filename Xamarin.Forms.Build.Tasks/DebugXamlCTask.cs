@@ -5,11 +5,9 @@ using System.Linq;
 
 using Mono.Cecil;
 using Mono.Cecil.Cil;
-using Mono.Cecil.Mdb;
-using Mono.Cecil.Pdb;
 using Mono.Cecil.Rocks;
 
-using Xamarin.Forms.Xaml;
+using static Microsoft.Build.Framework.MessageImportance;
 
 namespace Xamarin.Forms.Build.Tasks
 {
@@ -18,29 +16,21 @@ namespace Xamarin.Forms.Build.Tasks
 		public override bool Execute(out IList<Exception> thrownExceptions)
 		{
 			thrownExceptions = null;
-			Logger = Logger ?? new Logger(null, Verbosity);
-			Logger.LogLine(1, "Preparing debug code for xamlc");
-			Logger.LogLine(1, "\nAssembly: {0}", Assembly);
+			LoggingHelper.LogMessage(Normal, $"{new string(' ', 0)}Preparing debug code for xamlc, assembly: {Assembly}");
 
 			var resolver = new DefaultAssemblyResolver();
-			if (!string.IsNullOrEmpty(DependencyPaths))
-			{
-				foreach (var dep in DependencyPaths.Split(';'))
-				{
-					Logger.LogLine(3, "Adding searchpath {0}", dep);
+			if (!string.IsNullOrEmpty(DependencyPaths)) {
+				foreach (var dep in DependencyPaths.Split(';')) {
+					LoggingHelper.LogMessage(Low, $"{new string(' ', 2)}Adding searchpath {dep}");
 					resolver.AddSearchDirectory(dep);
 				}
 			}
-			if (!string.IsNullOrEmpty(ReferencePath))
-			{
+			if (!string.IsNullOrEmpty(ReferencePath)) {
 				var paths = ReferencePath.Replace("//", "/").Split(';');
-				foreach (var p in paths)
-				{
+				foreach (var p in paths) {
 					var searchpath = Path.GetDirectoryName(p);
-					Logger.LogLine(3, "Adding searchpath {0}", searchpath);
+					LoggingHelper.LogMessage(Low, $"{new string(' ', 2)}Adding searchpath {searchpath}");
 					resolver.AddSearchDirectory(searchpath);
-					//					LogLine (3, "Referencing {0}", p);
-					//					resolver.AddAssembly (p);
 				}
 			}
 
@@ -52,33 +42,31 @@ namespace Xamarin.Forms.Build.Tasks
 				AssemblyResolver = resolver
 			})) {
 				foreach (var module in assemblyDefinition.Modules) {
-					Logger.LogLine(2, " Module: {0}", module.Name);
+					LoggingHelper.LogMessage(Low, $"{new string(' ', 2)}Module: {module.Name}");
 					foreach (var resource in module.Resources.OfType<EmbeddedResource>()) {
-						Logger.LogString(2, "  Resource: {0}... ", resource.Name);
-						string classname;
-						if (!resource.IsXaml(out classname)) {
-							Logger.LogLine(2, "skipped.");
+						LoggingHelper.LogMessage(Low, $"{new string(' ', 4)}Resource: {resource.Name}");
+						if (!resource.IsXaml(module, out var classname)) {
+							LoggingHelper.LogMessage(Low, $"{new string(' ', 6)}skipped.");
 							continue;
-						} else
-							Logger.LogLine(2, "");
+						}
 						TypeDefinition typeDef = module.GetType(classname);
 						if (typeDef == null) {
-							Logger.LogLine(2, "no type found... skipped.");
+							LoggingHelper.LogMessage(Low, $"{new string(' ', 6)}no type found... skipped.");
 							continue;
 						}
 
 						var initComp = typeDef.Methods.FirstOrDefault(md => md.Name == "InitializeComponent");
 						if (initComp == null) {
-							Logger.LogLine(2, "no InitializeComponent found... skipped.");
+							LoggingHelper.LogMessage(Low, $"{new string(' ', 6)}no InitializeComponent found... skipped.");
 							continue;
 						}
 						var initCompRuntime = typeDef.Methods.FirstOrDefault(md => md.Name == "__InitComponentRuntime");
 						if (initCompRuntime == null) {
-							Logger.LogString(2, "   Creating empty {0}.__InitComponentRuntime ...", typeDef.Name);
+							LoggingHelper.LogMessage(Low, $"{new string(' ', 6)}Creating empty {typeDef.Name}.__InitComponentRuntime");
 							initCompRuntime = new MethodDefinition("__InitComponentRuntime", initComp.Attributes, initComp.ReturnType);
 							initCompRuntime.Body.InitLocals = true;
-							Logger.LogLine(2, "done.");
-							Logger.LogString(2, "   Copying body of InitializeComponent to __InitComponentRuntime ...", typeDef.Name);
+							LoggingHelper.LogMessage(Low, $"{new string(' ', 8)}done.");
+							LoggingHelper.LogMessage(Low, $"{new string(' ', 6)}Copying body of InitializeComponent to __InitComponentRuntime");
 							initCompRuntime.Body = new MethodBody(initCompRuntime);
 							var iCRIl = initCompRuntime.Body.GetILProcessor();
 							foreach (var instr in initComp.Body.Instructions)
@@ -86,7 +74,7 @@ namespace Xamarin.Forms.Build.Tasks
 							initComp.Body.Instructions.Clear();
 							initComp.Body.GetILProcessor().Emit(OpCodes.Ret);
 							typeDef.Methods.Add(initCompRuntime);
-							Logger.LogLine(2, "done.");
+							LoggingHelper.LogMessage(Low, $"{new string(' ', 8)}done.");
 						}
 
 //						IL_0000:  ldarg.0 
@@ -104,14 +92,13 @@ namespace Xamarin.Forms.Build.Tasks
 //						IL_0019:  callvirt instance void class Xamarin.Forms.Xaml.XamlcTests.MyPage::__InitComponentRuntime()
 //						IL_001e:  ret 
 
-						var altCtor =
-							typeDef.Methods.Where(
-								md => md.IsConstructor && md.Parameters.Count == 1 && md.Parameters[0].ParameterType == module.TypeSystem.Boolean)
-								.FirstOrDefault();
+						var altCtor = typeDef.Methods.FirstOrDefault(md => md.IsConstructor
+						                                                && md.Parameters.Count == 1
+						                                                && md.Parameters[0].ParameterType == module.TypeSystem.Boolean);
 						if (altCtor != null)
-							Logger.LogString(2, "   Replacing body of {0}.{0} (bool {1}) ... ", typeDef.Name, altCtor.Parameters[0].Name);
+							LoggingHelper.LogMessage(Low, $"{new string(' ', 6)}Replacing body of {typeDef.Name}.{typeDef.Name} (bool {altCtor.Parameters[0].Name})");							
 						else {
-							Logger.LogString(2, "   Adding {0}.{0} (bool useCompiledXaml) ... ", typeDef.Name);
+							LoggingHelper.LogMessage(Low, $"{new string(' ', 6)}Adding {typeDef.Name}.{typeDef.Name} (bool useCompiledXaml)");							
 							altCtor = new MethodDefinition(".ctor",
 								MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName |
 								MethodAttributes.RTSpecialName, module.TypeSystem.Void);
@@ -119,14 +106,15 @@ namespace Xamarin.Forms.Build.Tasks
 								module.TypeSystem.Boolean));
 						}
 
-						var body = new MethodBody(altCtor);
-						body.InitLocals = true;
+						var body = new MethodBody(altCtor) {
+							InitLocals = true
+						};
 						var il = body.GetILProcessor();
 						var br2 = Instruction.Create(OpCodes.Ldarg_0);
 						var ret = Instruction.Create(OpCodes.Ret);
 						il.Emit(OpCodes.Ldarg_0);
 						il.Emit(OpCodes.Callvirt,
-							module.ImportReference(typeDef.BaseType.Resolve().GetConstructors().First(c => c.HasParameters == false)));
+						        module.ImportReference(typeDef.BaseType.Resolve().GetConstructors().First(c => c.HasParameters == false)));
 
 						il.Emit(OpCodes.Nop);
 						il.Emit(OpCodes.Ldarg_1);
@@ -143,17 +131,16 @@ namespace Xamarin.Forms.Build.Tasks
 						altCtor.Body = body;
 						if (!typeDef.Methods.Contains(altCtor))
 							typeDef.Methods.Add(altCtor);
-						Logger.LogLine(2, "done.");
+						LoggingHelper.LogMessage(Low, $"{new string(' ', 8)}done.");
 					}
 
-					Logger.LogLine(2, "");
 				}
-				Logger.LogString(1, "Writing the assembly... ");
+				LoggingHelper.LogMessage(Normal, $"{new string(' ', 0)}Writing the assembly.");
 				assemblyDefinition.Write(new WriterParameters {
 					WriteSymbols = debug
 				});
 			}
-			Logger.LogLine(1, "done.");
+			LoggingHelper.LogMessage(Normal, $"{new string(' ', 2)}done.");
 
 			return true;
 		}

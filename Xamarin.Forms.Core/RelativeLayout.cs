@@ -7,7 +7,7 @@ using Xamarin.Forms.Internals;
 
 namespace Xamarin.Forms
 {
-	public class RelativeLayout : Layout<View>
+	public class RelativeLayout : Layout<View>, IElementConfiguration<RelativeLayout>
 	{
 		public static readonly BindableProperty XConstraintProperty = BindableProperty.CreateAttached("XConstraint", typeof(Constraint), typeof(RelativeLayout), null, propertyChanged: ConstraintChanged);
 
@@ -22,12 +22,21 @@ namespace Xamarin.Forms
 		readonly RelativeElementCollection _children;
 
 		IEnumerable<View> _childrenInSolveOrder;
+		readonly Lazy<PlatformConfigurationRegistry<RelativeLayout>> _platformConfigurationRegistry;
 
 		public RelativeLayout()
 		{
 			VerticalOptions = HorizontalOptions = LayoutOptions.FillAndExpand;
 			_children = new RelativeElementCollection(InternalChildren, this);
 			_children.Parent = this;
+
+			_platformConfigurationRegistry = new Lazy<PlatformConfigurationRegistry<RelativeLayout>>(() => 
+				new PlatformConfigurationRegistry<RelativeLayout>(this));
+		}
+
+		public IPlatformElementConfiguration<T, RelativeLayout> On<T>() where T : IConfigPlatform
+		{
+			return _platformConfigurationRegistry.Value.On<T>();
 		}
 
 		public new IRelativeList<View> Children
@@ -153,7 +162,7 @@ namespace Xamarin.Forms
 		protected override void OnAdded(View view)
 		{
 			BoundsConstraint boundsConstraint = GetBoundsConstraint(view);
-			if (boundsConstraint == null)
+			if (boundsConstraint == null || !boundsConstraint.CreatedFromExpression)
 			{
 				// user probably added the view through the strict Add method.
 				CreateBoundsFromConstraints(view, GetXConstraint(view), GetYConstraint(view), GetWidthConstraint(view), GetHeightConstraint(view));
@@ -321,7 +330,7 @@ namespace Xamarin.Forms
 			{
 				if (bounds == null)
 					throw new ArgumentNullException(nameof(bounds));
-				SetBoundsConstraint(view, BoundsConstraint.FromExpression(bounds));
+				SetBoundsConstraint(view, BoundsConstraint.FromExpression(bounds, fromExpression: true));
 
 				base.Add(view);
 			}
@@ -339,7 +348,7 @@ namespace Xamarin.Forms
 				parents.AddRange(ExpressionSearch.Default.FindObjects<View>(width));
 				parents.AddRange(ExpressionSearch.Default.FindObjects<View>(height));
 
-				BoundsConstraint bounds = BoundsConstraint.FromExpression(() => new Rectangle(xCompiled(), yCompiled(), widthCompiled(), heightCompiled()), parents.Distinct().ToArray());
+				BoundsConstraint bounds = BoundsConstraint.FromExpression(() => new Rectangle(xCompiled(), yCompiled(), widthCompiled(), heightCompiled()), fromExpression: true, parents: parents.Distinct().ToArray());
 
 				SetBoundsConstraint(view, bounds);
 

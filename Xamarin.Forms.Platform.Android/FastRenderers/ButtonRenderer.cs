@@ -13,8 +13,8 @@ using static System.String;
 
 namespace Xamarin.Forms.Platform.Android.FastRenderers
 {
-	public class ButtonRenderer : AppCompatButton, IVisualElementRenderer, AView.IOnAttachStateChangeListener,
-		AView.IOnFocusChangeListener, IEffectControlProvider, AView.IOnClickListener, AView.IOnTouchListener
+	internal sealed class ButtonRenderer : AppCompatButton, IVisualElementRenderer, AView.IOnAttachStateChangeListener,
+		AView.IOnFocusChangeListener, IEffectControlProvider, AView.IOnClickListener, AView.IOnTouchListener, IViewRenderer
 	{
 		float _defaultFontSize;
 		int? _defaultLabelFor;
@@ -22,21 +22,30 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 		int _imageHeight = -1;
 		bool _isDisposed;
 		bool _inputTransparent;
-		readonly Lazy<TextColorSwitcher> _textColorSwitcher;
+		Lazy<TextColorSwitcher> _textColorSwitcher;
 		readonly AutomationPropertiesProvider _automationPropertiesProvider;
 		readonly EffectControlProvider _effectControlProvider;
 		VisualElementTracker _tracker;
 		ButtonBackgroundTracker _backgroundTracker;
+		Thickness _paddingDeltaPix = new Thickness();
 
 		public event EventHandler<VisualElementChangedEventArgs> ElementChanged;
 		public event EventHandler<PropertyChangedEventArgs> ElementPropertyChanged;
 
+		public ButtonRenderer(Context context) : base(context)
+		{
+			_automationPropertiesProvider = new AutomationPropertiesProvider(this);
+			_effectControlProvider = new EffectControlProvider(this);
+
+			Initialize();
+		}
+
+		[Obsolete("This constructor is obsolete as of version 2.5. Please use ButtonRenderer(Context) instead.")]
 		public ButtonRenderer() : base(Forms.Context)
 		{
 			_automationPropertiesProvider = new AutomationPropertiesProvider(this);
 			_effectControlProvider = new EffectControlProvider(this);
-			_textColorSwitcher = new Lazy<TextColorSwitcher>(() => new TextColorSwitcher(TextColors));
-
+			
 			Initialize();
 		}
 
@@ -114,7 +123,7 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 			VisualElement oldElement = Button;
 			Button = (Button)element;
 
-			Performance.Start();
+			Performance.Start(out string reference);
 
 			if (oldElement != null)
 			{
@@ -146,7 +155,7 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 
 			EffectUtilities.RegisterEffectControlProvider(this, oldElement, element);
 
-			Performance.Stop();
+			Performance.Stop(reference);
 		}
 
 		void IVisualElementRenderer.SetLabelFor(int? id)
@@ -161,9 +170,13 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 
 		void IVisualElementRenderer.UpdateLayout()
 		{
-			Performance.Start();
+			var reference = Guid.NewGuid().ToString();
 			_tracker?.UpdateLayout();
-			Performance.Stop();
+		}
+
+		void IViewRenderer.MeasureExactly()
+		{
+			ViewRenderer.MeasureExactly(this, Element, Context);
 		}
 
 		protected override void Dispose(bool disposing)
@@ -189,6 +202,9 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 				if (Element != null)
 				{
 					Element.PropertyChanged -= OnElementPropertyChanged;
+
+					if (Platform.GetRenderer(Element) == this)
+						Element.ClearValue(Platform.RendererProperty);
 				}
 			}
 
@@ -203,12 +219,12 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 			return base.OnTouchEvent(e);
 		}
 
-		protected virtual Size MinimumSize()
+		Size MinimumSize()
 		{
 			return new Size();
 		}
 
-		protected virtual void OnElementChanged(ElementChangedEventArgs<Button> e)
+		void OnElementChanged(ElementChangedEventArgs<Button> e)
 		{
 			if (e.OldElement != null)
 			{
@@ -218,6 +234,9 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 			{
 				this.EnsureId();
 
+				_textColorSwitcher = new Lazy<TextColorSwitcher>(
+					() => new TextColorSwitcher(TextColors, e.NewElement.UseLegacyColorManagement()));
+
 				UpdateFont();
 				UpdateText();
 				UpdateBitmap();
@@ -226,12 +245,15 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 				UpdateInputTransparent();
 				UpdateBackgroundColor();
 				UpdateDrawable();
+				UpdatePadding();
+
+				ElevationHelper.SetElevation(this, e.NewElement);
 			}
 
 			ElementChanged?.Invoke(this, new VisualElementChangedEventArgs(e.OldElement, e.NewElement));
 		}
 
-		protected virtual void OnElementPropertyChanged(object sender, PropertyChangedEventArgs e)
+		void OnElementPropertyChanged(object sender, PropertyChangedEventArgs e)
 		{
 			if (e.PropertyName == Button.TextProperty.PropertyName)
 			{
@@ -261,6 +283,10 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 			{
 				UpdateInputTransparent();
 			}
+			else if (e.PropertyName == Button.PaddingProperty.PropertyName)
+			{
+				UpdatePadding();
+			}
 
 			ElementPropertyChanged?.Invoke(this, e);
 		}
@@ -276,39 +302,39 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 			{
 				// We've got an image (and no text); it's already centered horizontally,
 				// we just need to adjust the padding so it centers vertically
-				int diff = (b - t - _imageHeight) / 2;
+				var diff = ((b - Context.ToPixels(Button.Padding.Bottom + Button.Padding.Top)) - t - _imageHeight) / 2;
 				diff = Math.Max(diff, 0);
-				SetPadding(0, diff, 0, -diff);
+				UpdateContentEdge(new Thickness(0, diff, 0, -diff));
+			}
+			else
+			{
+				UpdateContentEdge();
 			}
 
 			base.OnLayout(changed, l, t, r, b);
 		}
 
-		protected void SetTracker(VisualElementTracker tracker)
+		void SetTracker(VisualElementTracker tracker)
 		{
 			_tracker = tracker;
 		}
 
-		protected void UpdateBackgroundColor()
+		void UpdateBackgroundColor()
 		{
-			_backgroundTracker.UpdateBackgroundColor();
+			_backgroundTracker?.UpdateBackgroundColor();
 		}
 
-		internal virtual void OnNativeFocusChanged(bool hasFocus)
+		internal void OnNativeFocusChanged(bool hasFocus)
 		{
 		}
 
-		internal virtual void SendVisualElementInitialized(VisualElement element, AView nativeView)
+		internal void SendVisualElementInitialized(VisualElement element, AView nativeView)
 		{
 			element.SendViewInitialized(nativeView);
 		}
 
 		void Initialize()
 		{
-			// Fixes issues with AppCompatButton elevation (z-index) 
-			if (Forms.IsLollipopOrNewer)
-				StateListAnimator = null;
-
 			SoundEffectsEnabled = false;
 			SetOnClickListener(this);
 			SetOnTouchListener(this);
@@ -335,7 +361,7 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 				return;
 			}
 
-			Drawable image = Context.Resources.GetDrawable(imageFile);
+			Drawable image = Context.GetDrawable(imageFile);
 
 			if (IsNullOrEmpty(Button.Text))
 			{
@@ -345,7 +371,7 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 				// to handle the vertical centering 
 
 				// Clear any previous padding and set the image as top/center
-				SetPadding(0, 0, 0, 0);
+				UpdateContentEdge();
 				SetCompoundDrawablesWithIntrinsicBounds(null, image, null, null);
 
 				// Keep track of the image height so we can use it in OnLayout
@@ -450,12 +476,28 @@ namespace Xamarin.Forms.Platform.Android.FastRenderers
 
 		void UpdateTextColor()
 		{
-			if (Element == null || _isDisposed)
+			if (Element == null || _isDisposed || _textColorSwitcher == null)
 			{
 				return;
 			}
 
 			_textColorSwitcher.Value.UpdateTextColor(this, Button.TextColor);
+		}
+
+		void UpdatePadding ()
+		{
+			SetPadding(
+				(int)(Context.ToPixels(Button.Padding.Left) + _paddingDeltaPix.Left),
+				(int)(Context.ToPixels(Button.Padding.Top) + _paddingDeltaPix.Top),
+				(int)(Context.ToPixels(Button.Padding.Right) + _paddingDeltaPix.Right),
+				(int)(Context.ToPixels(Button.Padding.Bottom) + _paddingDeltaPix.Bottom)
+			);
+		}
+
+		void UpdateContentEdge (Thickness? delta = null)
+		{
+			_paddingDeltaPix = delta ?? new Thickness ();
+			UpdatePadding ();
 		}
 
 		void UpdateDrawable()

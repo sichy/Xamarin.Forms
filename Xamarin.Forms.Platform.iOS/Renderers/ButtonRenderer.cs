@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using Foundation;
 using UIKit;
+using Xamarin.Forms.PlatformConfiguration.iOSSpecific;
 using SizeF = CoreGraphics.CGSize;
 
 namespace Xamarin.Forms.Platform.iOS
@@ -13,8 +14,10 @@ namespace Xamarin.Forms.Platform.iOS
 		UIColor _buttonTextColorDefaultDisabled;
 		UIColor _buttonTextColorDefaultHighlighted;
 		UIColor _buttonTextColorDefaultNormal;
+		bool _useLegacyColorManagement;
 		bool _titleChanged;
 		SizeF _titleSize;
+		UIEdgeInsets _paddingDelta = new UIEdgeInsets();
 
 		// This looks like it should be a const under iOS Classic,
 		// but that doesn't work under iOS 
@@ -22,6 +25,7 @@ namespace Xamarin.Forms.Platform.iOS
 		// Under iOS Classic Resharper wants to suggest this use the built-in type ref
 		// but under iOS that suggestion won't work
 		readonly nfloat _minimumButtonHeight = 44; // Apple docs
+		readonly nfloat _defaultCornerRadius = 5;
 
 		static readonly UIControlState[] s_controlStates = { UIControlState.Normal, UIControlState.Highlighted, UIControlState.Disabled };
 
@@ -56,11 +60,13 @@ namespace Xamarin.Forms.Platform.iOS
 			{
 				if (Control == null)
 				{
-					SetNativeControl(new UIButton(UIButtonType.System));
+					SetNativeControl(CreateNativeControl());
 
 					Debug.Assert(Control != null, "Control != null");
 
 					SetControlPropertiesFromProxy();
+
+					_useLegacyColorManagement = e.NewElement.UseLegacyColorManagement();
 
 					_buttonTextColorDefaultNormal = Control.TitleColor(UIControlState.Normal);
 					_buttonTextColorDefaultHighlighted = Control.TitleColor(UIControlState.Highlighted);
@@ -75,7 +81,13 @@ namespace Xamarin.Forms.Platform.iOS
 				UpdateBorder();
 				UpdateImage();
 				UpdateTextColor();
+				UpdatePadding();
 			}
+		}
+
+		protected override UIButton CreateNativeControl()
+		{
+			return new UIButton(UIButtonType.System);
 		}
 
 		protected override void OnElementPropertyChanged(object sender, PropertyChangedEventArgs e)
@@ -88,10 +100,12 @@ namespace Xamarin.Forms.Platform.iOS
 				UpdateTextColor();
 			else if (e.PropertyName == Button.FontProperty.PropertyName)
 				UpdateFont();
-			else if (e.PropertyName == Button.BorderWidthProperty.PropertyName || e.PropertyName == Button.BorderRadiusProperty.PropertyName || e.PropertyName == Button.BorderColorProperty.PropertyName)
+			else if (e.PropertyName == Button.BorderWidthProperty.PropertyName || e.PropertyName == Button.CornerRadiusProperty.PropertyName || e.PropertyName == Button.BorderColorProperty.PropertyName)
 				UpdateBorder();
 			else if (e.PropertyName == Button.ImageProperty.PropertyName)
 				UpdateImage();
+			else if (e.PropertyName == Button.PaddingProperty.PropertyName)
+				UpdatePadding();
 		}
     
 		protected override void SetAccessibilityLabel()
@@ -139,7 +153,13 @@ namespace Xamarin.Forms.Platform.iOS
 				uiButton.Layer.BorderColor = button.BorderColor.ToCGColor();
 
 			uiButton.Layer.BorderWidth = Math.Max(0f, (float)button.BorderWidth);
-			uiButton.Layer.CornerRadius = button.BorderRadius;
+
+			nfloat cornerRadius = _defaultCornerRadius;
+
+			if (button.IsSet(Button.CornerRadiusProperty) && button.CornerRadius != (int)Button.CornerRadiusProperty.DefaultValue)
+				cornerRadius = button.CornerRadius;
+
+			uiButton.Layer.CornerRadius = cornerRadius;
 		}
 
 		void UpdateFont()
@@ -151,7 +171,7 @@ namespace Xamarin.Forms.Platform.iOS
 		{
 			IImageSourceHandler handler;
 			FileImageSource source = Element.Image;
-			if (source != null && (handler = Internals.Registrar.Registered.GetHandler<IImageSourceHandler>(source.GetType())) != null)
+			if (source != null && (handler = Internals.Registrar.Registered.GetHandlerForObject<IImageSourceHandler>(source)) != null)
 			{
 				UIImage uiimage;
 				try
@@ -201,12 +221,33 @@ namespace Xamarin.Forms.Platform.iOS
 			}
 			else
 			{
-				Control.SetTitleColor(Element.TextColor.ToUIColor(), UIControlState.Normal);
-				Control.SetTitleColor(Element.TextColor.ToUIColor(), UIControlState.Highlighted);
-				Control.SetTitleColor(_buttonTextColorDefaultDisabled, UIControlState.Disabled);
-				
-				Control.TintColor = Element.TextColor.ToUIColor();
+				var color = Element.TextColor.ToUIColor();
+
+				Control.SetTitleColor(color, UIControlState.Normal);
+				Control.SetTitleColor(color, UIControlState.Highlighted);
+				Control.SetTitleColor(_useLegacyColorManagement ? _buttonTextColorDefaultDisabled : color, UIControlState.Disabled);
+
+				Control.TintColor = color;
 			}
+		}
+
+		void UpdatePadding(UIButton button = null)
+		{
+			var uiElement = button ?? Control;
+			if (uiElement == null)
+				return;
+			uiElement.ContentEdgeInsets = new UIEdgeInsets(
+				(float)(Element.Padding.Top + _paddingDelta.Top),
+				(float)(Element.Padding.Left + _paddingDelta.Left),
+				(float)(Element.Padding.Bottom + _paddingDelta.Bottom),
+				(float)(Element.Padding.Right + _paddingDelta.Right)
+			);
+		}
+
+		void UpdateContentEdge(UIButton button, UIEdgeInsets? delta = null)
+		{
+			_paddingDelta = delta ?? new UIEdgeInsets ();
+			UpdatePadding(button);
 		}
 
 		void ClearEdgeInsets(UIButton button)
@@ -216,7 +257,7 @@ namespace Xamarin.Forms.Platform.iOS
 
 			Control.ImageEdgeInsets = new UIEdgeInsets(0, 0, 0, 0);
 			Control.TitleEdgeInsets = new UIEdgeInsets(0, 0, 0, 0);
-			Control.ContentEdgeInsets = new UIEdgeInsets(0, 0, 0, 0);
+			UpdateContentEdge (Control);
 		}
 
 		void ComputeEdgeInsets(UIButton button, Button.ButtonContentLayout layout)
@@ -231,7 +272,7 @@ namespace Xamarin.Forms.Platform.iOS
 			{
 				button.ImageEdgeInsets = new UIEdgeInsets(0, -spacing, 0, spacing);
 				button.TitleEdgeInsets = new UIEdgeInsets(0, spacing, 0, -spacing);
-				button.ContentEdgeInsets = new UIEdgeInsets(0, 2 * spacing, 0, 2 * spacing);
+				UpdateContentEdge (button, new UIEdgeInsets(0, 2 * spacing, 0, 2 * spacing));
 				return;
 			}
 
@@ -250,7 +291,7 @@ namespace Xamarin.Forms.Platform.iOS
 			{
 				button.ImageEdgeInsets = new UIEdgeInsets(0, labelWidth + spacing, 0, -labelWidth - spacing);
 				button.TitleEdgeInsets = new UIEdgeInsets(0, -imageWidth - spacing, 0, imageWidth + spacing);
-				button.ContentEdgeInsets = new UIEdgeInsets(0, 2 * spacing, 0, 2 * spacing);
+				UpdateContentEdge (button, new UIEdgeInsets(0, 2 * spacing, 0, 2 * spacing));
 				return;
 			}
 
@@ -259,7 +300,7 @@ namespace Xamarin.Forms.Platform.iOS
 
 			var edgeOffset = (float)Math.Min(imageVertOffset, titleVertOffset);
 
-			button.ContentEdgeInsets = new UIEdgeInsets(edgeOffset, 0, edgeOffset, 0);
+			UpdateContentEdge (button, new UIEdgeInsets (edgeOffset, 0, edgeOffset, 0));
 
 			var horizontalImageOffset = labelWidth / 2;
 			var horizontalTitleOffset = imageWidth / 2;

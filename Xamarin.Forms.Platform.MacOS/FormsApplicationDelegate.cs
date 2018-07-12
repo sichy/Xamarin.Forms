@@ -1,6 +1,8 @@
 ﻿using System;
 using System.ComponentModel;
 using AppKit;
+using Xamarin.Forms.Internals;
+using Xamarin.Forms.Platform.macOS.Extensions;
 
 namespace Xamarin.Forms.Platform.MacOS
 {
@@ -8,6 +10,7 @@ namespace Xamarin.Forms.Platform.MacOS
 	{
 		Application _application;
 		bool _isSuspended;
+		static int _storyboardMainMenuCount;
 
 		public abstract NSWindow MainWindow { get; }
 
@@ -26,6 +29,7 @@ namespace Xamarin.Forms.Platform.MacOS
 
 			Application.SetCurrentApplication(application);
 			_application = application;
+			_storyboardMainMenuCount = (int)NSApplication.SharedApplication.MainMenu.Count;
 
 			application.PropertyChanged += ApplicationOnPropertyChanged;
 		}
@@ -41,6 +45,7 @@ namespace Xamarin.Forms.Platform.MacOS
 				throw new InvalidOperationException("You MUST invoke LoadApplication () before calling base.FinishedLaunching ()");
 
 			SetMainPage();
+			UpdateMainMenu();
 			_application.SendStart();
 		}
 
@@ -53,18 +58,20 @@ namespace Xamarin.Forms.Platform.MacOS
 			_application.SendResume();
 		}
 
-		public override async void DidResignActive(Foundation.NSNotification notification)
+		public override void DidResignActive(Foundation.NSNotification notification)
 		{
 			// applicationWillResignActive
 			if (_application == null) return;
 			_isSuspended = true;
-			await _application.SendSleepAsync();
+			_application.SendSleep();
 		}
 
 		void ApplicationOnPropertyChanged(object sender, PropertyChangedEventArgs e)
 		{
 			if (e.PropertyName == nameof(Application.MainPage))
 				UpdateMainPage();
+			if (e.PropertyName == nameof(Menu))
+				UpdateMainMenu();
 		}
 
 		void SetMainPage()
@@ -80,6 +87,43 @@ namespace Xamarin.Forms.Platform.MacOS
 			var platformRenderer = (PlatformRenderer)MainWindow.ContentViewController;
 			MainWindow.ContentViewController = _application.MainPage.CreateViewController();
 			(platformRenderer?.Platform as IDisposable)?.Dispose();
+		}
+
+		void UpdateMainMenu()
+		{
+			var mainMenu = Element.GetMenu(_application);
+			var nsMenu = NSApplication.SharedApplication.MainMenu;
+			if (mainMenu != null)
+				SetMainMenu(mainMenu);
+			else if (nsMenu != null && nsMenu.Count >= 2)
+				ClearNSMenu(nsMenu);
+		}
+
+		void SetMainMenu(Menu mainMenu)
+		{
+			mainMenu.PropertyChanged -= MainMenuOnPropertyChanged;
+			mainMenu.PropertyChanged += MainMenuOnPropertyChanged;
+			MainMenuOnPropertyChanged(this, null);
+		}
+
+		void MainMenuOnPropertyChanged(object sender, PropertyChangedEventArgs e)
+		{
+			var nsMenu = NSApplication.SharedApplication.MainMenu;
+			if (nsMenu == null)
+			{
+				Log.Warning("FormsApplicationDelegate", "Please provide a Main.storyboard to handle menus");
+				return;
+			}
+				
+			ClearNSMenu(nsMenu);
+			Element.GetMenu(_application).ToNSMenu(nsMenu);
+		}
+
+		static void ClearNSMenu(NSMenu menu)
+		{
+			// remove the menu that was created in the code
+			for (var i = menu.Count - _storyboardMainMenuCount; i > 0; i--)
+				menu.RemoveItemAt(i);
 		}
 	}
 }

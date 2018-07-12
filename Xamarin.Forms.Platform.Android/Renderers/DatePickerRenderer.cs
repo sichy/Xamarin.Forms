@@ -1,8 +1,11 @@
 using System;
 using System.ComponentModel;
 using Android.App;
+using Android.Content;
 using Android.Content.Res;
+using Android.Util;
 using Android.Widget;
+using Xamarin.Forms.PlatformConfiguration.AndroidSpecific;
 using AView = Android.Views.View;
 using Object = Java.Lang.Object;
 
@@ -14,6 +17,14 @@ namespace Xamarin.Forms.Platform.Android
 		bool _disposed;
 		TextColorSwitcher _textColorSwitcher;
 
+		public DatePickerRenderer(Context context) : base(context)
+		{
+			AutoPackage = false;
+			if (Forms.IsLollipopOrNewer)
+				Device.Info.PropertyChanged += DeviceInfoPropertyChanged;
+		}
+
+		[Obsolete("This constructor is obsolete as of version 2.5. Please use DatePickerRenderer(Context) instead.")]
 		public DatePickerRenderer()
 		{
 			AutoPackage = false;
@@ -57,11 +68,14 @@ namespace Xamarin.Forms.Platform.Android
 
 				textField.SetOnClickListener(TextFieldClickHandler.Instance);
 				SetNativeControl(textField);
-				_textColorSwitcher = new TextColorSwitcher(textField.TextColors); 
+
+				var useLegacyColorManagement = e.NewElement.UseLegacyColorManagement();
+				_textColorSwitcher = new TextColorSwitcher(textField.TextColors, useLegacyColorManagement); 
 			}
 
 			SetDate(Element.Date);
 
+			UpdateFont();
 			UpdateMinimumDate();
 			UpdateMaximumDate();
 			UpdateTextColor();
@@ -77,8 +91,10 @@ namespace Xamarin.Forms.Platform.Android
 				UpdateMinimumDate();
 			else if (e.PropertyName == DatePicker.MaximumDateProperty.PropertyName)
 				UpdateMaximumDate();
-			if (e.PropertyName == DatePicker.TextColorProperty.PropertyName)
+			else if (e.PropertyName == DatePicker.TextColorProperty.PropertyName)
 				UpdateTextColor();
+			else if (e.PropertyName == DatePicker.FontAttributesProperty.PropertyName || e.PropertyName == DatePicker.FontFamilyProperty.PropertyName || e.PropertyName == DatePicker.FontSizeProperty.PropertyName)
+				UpdateFont();
 		}
 
 		internal override void OnFocusChangeRequested(object sender, VisualElement.FocusRequestArgs e)
@@ -100,20 +116,17 @@ namespace Xamarin.Forms.Platform.Android
 			}
 		}
 
-		void CreateDatePickerDialog(int year, int month, int day)
+		protected virtual DatePickerDialog CreateDatePickerDialog(int year, int month, int day)
 		{
 			DatePicker view = Element;
-			_dialog = new DatePickerDialog(Context, (o, e) =>
+			var dialog = new DatePickerDialog(Context, (o, e) =>
 			{
 				view.Date = e.Date;
 				((IElementController)view).SetValueFromRenderer(VisualElement.IsFocusedPropertyKey, false);
 				Control.ClearFocus();
-
-				if (Forms.IsLollipopOrNewer)
-					_dialog.CancelEvent -= OnCancelButtonClicked;
-
-				_dialog = null;
 			}, year, month, day);
+
+			return dialog;
 		}
 
 		void DeviceInfoPropertyChanged(object sender, PropertyChangedEventArgs e)
@@ -124,7 +137,7 @@ namespace Xamarin.Forms.Platform.Android
 				if (currentDialog != null && currentDialog.IsShowing)
 				{
 					currentDialog.Dismiss();
-					CreateDatePickerDialog(currentDialog.DatePicker.Year, currentDialog.DatePicker.Month, currentDialog.DatePicker.DayOfMonth);
+					_dialog = CreateDatePickerDialog(currentDialog.DatePicker.Year, currentDialog.DatePicker.Month, currentDialog.DatePicker.DayOfMonth);
 					_dialog.Show();
 				}
 			}
@@ -135,7 +148,7 @@ namespace Xamarin.Forms.Platform.Android
 			DatePicker view = Element;
 			((IElementController)view).SetValueFromRenderer(VisualElement.IsFocusedPropertyKey, true);
 
-			CreateDatePickerDialog(view.Date.Year, view.Date.Month - 1, view.Date.Day);
+			_dialog = CreateDatePickerDialog(view.Date.Year, view.Date.Month - 1, view.Date.Day);
 
 			UpdateMinimumDate();
 			UpdateMaximumDate();
@@ -154,6 +167,12 @@ namespace Xamarin.Forms.Platform.Android
 		void SetDate(DateTime date)
 		{
 			Control.Text = date.ToString(Element.Format);
+		}
+
+		void UpdateFont()
+		{
+			Control.Typeface = Element.ToTypeface();
+			Control.SetTextSize(ComplexUnitType.Sp, (float)Element.FontSize);
 		}
 
 		void UpdateMaximumDate()

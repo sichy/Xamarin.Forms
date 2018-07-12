@@ -1,18 +1,42 @@
 using System;
 using System.ComponentModel;
 using Android.App;
+using Android.Content;
 using Android.OS;
 using Android.Views;
 using AView = Android.Views.View;
+using Xamarin.Forms.Platform.Android.FastRenderers;
 
 namespace Xamarin.Forms.Platform.Android
 {
-	public abstract class ViewRenderer : ViewRenderer<View, AView>
+	public interface IViewRenderer
 	{
+		void MeasureExactly();
 	}
 
-	public abstract class ViewRenderer<TView, TNativeView> : VisualElementRenderer<TView>, AView.IOnFocusChangeListener where TView : View where TNativeView : AView
+	public abstract class ViewRenderer : ViewRenderer<View, AView>
 	{
+		protected ViewRenderer(Context context) : base(context)
+		{
+		}
+
+		[Obsolete("This constructor is obsolete as of version 2.5. Please use ViewRenderer(Context) instead.")]
+		protected ViewRenderer()
+		{
+		}
+	}
+
+	public abstract class ViewRenderer<TView, TNativeView> : VisualElementRenderer<TView>, IViewRenderer, AView.IOnFocusChangeListener where TView : View where TNativeView : AView
+	{
+		protected ViewRenderer(Context context) : base(context)
+		{
+		}
+
+		[Obsolete("This constructor is obsolete as of version 2.5. Please use ViewRenderer(Context) instead.")]
+		protected ViewRenderer() 
+		{
+		}
+
 		protected virtual TNativeView CreateNativeControl()
 		{
 			return default(TNativeView);
@@ -31,6 +55,36 @@ namespace Xamarin.Forms.Platform.Android
 		internal bool HandleKeyboardOnFocus;
 
 		public TNativeView Control { get; private set; }
+
+		void IViewRenderer.MeasureExactly()
+		{
+			MeasureExactly(Control, Element, Context);
+		}
+
+		// This is static so it's also available for use by the fast renderers
+		internal static void MeasureExactly(AView control, VisualElement element, Context context)
+		{
+			if (control == null || element == null)
+			{
+				return;
+			}
+
+			var width = element.Width;
+			var height = element.Height;
+
+			if (width <= 0 || height <= 0)
+			{
+				return;
+			}
+
+			var realWidth = (int)context.ToPixels(width);
+			var realHeight = (int)context.ToPixels(height);
+
+			var widthMeasureSpec = MeasureSpecFactory.MakeMeasureSpec(realWidth, MeasureSpecMode.Exactly);
+			var heightMeasureSpec = MeasureSpecFactory.MakeMeasureSpec(realHeight, MeasureSpecMode.Exactly);
+			
+			control.Measure(widthMeasureSpec, heightMeasureSpec);
+		}
 
 		void AView.IOnFocusChangeListener.OnFocusChange(AView v, bool hasFocus)
 		{
@@ -129,6 +183,8 @@ namespace Xamarin.Forms.Platform.Android
 				UpdateIsEnabled();
 			else if (e.PropertyName == AutomationProperties.LabeledByProperty.PropertyName)
 				SetLabeledBy();
+			else if (e.PropertyName == VisualElement.FlowDirectionProperty.PropertyName)
+				UpdateFlowDirection();
 		}
 
 		protected override void OnLayout(bool changed, int l, int t, int r, int b)
@@ -152,12 +208,13 @@ namespace Xamarin.Forms.Platform.Android
 		protected override void SetAutomationId(string id)
 		{
 			if (Control == null)
-				base.SetAutomationId(id);
-			else
 			{
-				ContentDescription = id + "_Container";
-				Control.ContentDescription = id;
+				base.SetAutomationId(id);
+				return;
 			}
+
+			ContentDescription = id + "_Container";
+			AutomationPropertiesProvider.SetAutomationId(Control, Element, id);
 		}
 
 		protected override void SetContentDescription()
@@ -168,21 +225,8 @@ namespace Xamarin.Forms.Platform.Android
 				return;
 			}
 
-			if (Element == null)
-				return;
-
-			if (SetHint())
-				return;
-
-			if (_defaultContentDescription == null)
-				_defaultContentDescription = Control.ContentDescription;
-
-			var elemValue = string.Join(" ", (string)Element.GetValue(AutomationProperties.NameProperty), (string)Element.GetValue(AutomationProperties.HelpTextProperty));
-
-			if (!string.IsNullOrWhiteSpace(elemValue))
-				Control.ContentDescription = elemValue;
-			else
-				Control.ContentDescription = _defaultContentDescription;
+			AutomationPropertiesProvider.SetContentDescription(
+				Control, Element, ref _defaultContentDescription, ref _defaultHint);
 		}
 
 		protected override void SetFocusable()
@@ -193,44 +237,7 @@ namespace Xamarin.Forms.Platform.Android
 				return;
 			}
 
-			if (Element == null)
-				return;
-
-			if (!_defaultFocusable.HasValue)
-				_defaultFocusable = Control.Focusable;
-
-			Control.Focusable = (bool)((bool?)Element.GetValue(AutomationProperties.IsInAccessibleTreeProperty) ?? _defaultFocusable);
-		}
-
-		protected override bool SetHint()
-		{				
-			if (Control == null)
-			{
-				return base.SetHint();
-			}
-
-			if (Element == null)
-				return false;
-
-			var textView = Control as global::Android.Widget.TextView;
-			if (textView == null)
-				return false;
-
-			// Let the specified Title/Placeholder take precedence, but don't set the ContentDescription (won't work anyway)
-			if (((Element as Picker)?.Title ?? (Element as Entry)?.Placeholder ?? (Element as EntryCell)?.Placeholder) != null)
-				return true;
-
-			if (_defaultHint == null)
-				_defaultHint = textView.Hint;
-
-			var elemValue = string.Join((String.IsNullOrWhiteSpace((string)(Element.GetValue(AutomationProperties.NameProperty))) || String.IsNullOrWhiteSpace((string)(Element.GetValue(AutomationProperties.HelpTextProperty)))) ? "" : ". ", (string)Element.GetValue(AutomationProperties.NameProperty), (string)Element.GetValue(AutomationProperties.HelpTextProperty));
-
-			if (!string.IsNullOrWhiteSpace(elemValue))
-				textView.Hint = elemValue;
-			else
-				textView.Hint = _defaultHint;
-
-			return true;
+			AutomationPropertiesProvider.SetFocusable(Control, Element, ref _defaultFocusable);
 		}
 
 		protected void SetNativeControl(TNativeView control)
@@ -301,31 +308,22 @@ namespace Xamarin.Forms.Platform.Android
 			Control.OnFocusChangeListener = this;
 
 			UpdateIsEnabled();
+			UpdateFlowDirection();
 			SetLabeledBy();
 		}
 
 		void SetLabeledBy()
-		{
-			if (Element == null || Control == null)
-				return;
-
-			var elemValue = (VisualElement)Element.GetValue(AutomationProperties.LabeledByProperty);
-
-			if (elemValue != null)
-			{
-				var id = Control.Id;
-				if (id == NoId)
-					id = Control.Id = Platform.GenerateViewId();
-
-				var renderer = elemValue?.GetRenderer();
-				renderer?.SetLabelFor(id);
-			}
-		}
+			=> AutomationPropertiesProvider.SetLabeledBy(Control, Element);
 
 		void UpdateIsEnabled()
 		{
 			if (Control != null)
 				Control.Enabled = Element.IsEnabled;
+		}
+
+		void UpdateFlowDirection()
+		{
+			Control.UpdateFlowDirection(Element);
 		}
 	}
 }

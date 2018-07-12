@@ -8,22 +8,20 @@ namespace Xamarin.Forms.Platform.Android
 	{
 		Func<float, Point, bool> _pinchDelegate;
 		Action _pinchEndedDelegate;
+		readonly Func<double, double> _fromPixels;
 		Func<Point, bool> _pinchStartedDelegate;
 
-		public InnerScaleListener(Func<float, Point, bool> pinchDelegate, Func<Point, bool> pinchStarted, Action pinchEnded)
+		public InnerScaleListener(PinchGestureHandler pinchGestureHandler, Func<double, double> fromPixels)
 		{
-			if (pinchDelegate == null)
-				throw new ArgumentNullException("pinchDelegate");
+			if (pinchGestureHandler == null)
+			{
+				throw new ArgumentNullException(nameof(pinchGestureHandler));
+			}
 
-			if (pinchStarted == null)
-				throw new ArgumentNullException("pinchStarted");
-
-			if (pinchEnded == null)
-				throw new ArgumentNullException("pinchEnded");
-
-			_pinchDelegate = pinchDelegate;
-			_pinchStartedDelegate = pinchStarted;
-			_pinchEndedDelegate = pinchEnded;
+			_pinchDelegate = pinchGestureHandler.OnPinch;
+			_pinchStartedDelegate = pinchGestureHandler.OnPinchStarted;
+			_pinchEndedDelegate = pinchGestureHandler.OnPinchEnded;
+			_fromPixels = fromPixels;
 		}
 
 		// This is needed because GestureRecognizer callbacks can be delayed several hundred milliseconds
@@ -41,12 +39,12 @@ namespace Xamarin.Forms.Platform.Android
 			if (Math.Abs(cur - last) < 10)
 				return false;
 
-			return _pinchDelegate(detector.ScaleFactor, new Point(Forms.Context.FromPixels(detector.FocusX), Forms.Context.FromPixels(detector.FocusY)));
+			return _pinchDelegate(detector.ScaleFactor, new Point(_fromPixels(detector.FocusX), _fromPixels(detector.FocusY)));
 		}
 
 		public override bool OnScaleBegin(ScaleGestureDetector detector)
 		{
-			return _pinchStartedDelegate(new Point(Forms.Context.FromPixels(detector.FocusX), Forms.Context.FromPixels(detector.FocusY)));
+			return _pinchStartedDelegate(new Point(_fromPixels(detector.FocusX), _fromPixels(detector.FocusY)));
 		}
 
 		public override void OnScaleEnd(ScaleGestureDetector detector)

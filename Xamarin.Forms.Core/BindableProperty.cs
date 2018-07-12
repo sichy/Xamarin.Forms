@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq.Expressions;
 using System.Reflection;
 using Xamarin.Forms.Internals;
+using Xamarin.Forms.Xaml;
 
 namespace Xamarin.Forms
 {
@@ -65,12 +66,15 @@ namespace Xamarin.Forms
 				throw new ArgumentNullException("declaringType");
 
 			// don't use Enum.IsDefined as its redonkulously expensive for what it does
-			if (defaultBindingMode != BindingMode.Default && defaultBindingMode != BindingMode.OneWay && defaultBindingMode != BindingMode.OneWayToSource && defaultBindingMode != BindingMode.TwoWay)
+			if (defaultBindingMode != BindingMode.Default && defaultBindingMode != BindingMode.OneWay && defaultBindingMode != BindingMode.OneWayToSource && defaultBindingMode != BindingMode.TwoWay && defaultBindingMode != BindingMode.OneTime)
 				throw new ArgumentException("Not a valid type of BindingMode", "defaultBindingMode");
+			
 			if (defaultValue == null && Nullable.GetUnderlyingType(returnType) == null && returnType.GetTypeInfo().IsValueType)
-				throw new ArgumentException("Not a valid default value", "defaultValue");
+				defaultValue = Activator.CreateInstance(returnType);
+
 			if (defaultValue != null && !returnType.IsInstanceOfType(defaultValue))
 				throw new ArgumentException("Default value did not match return type", "defaultValue");
+
 			if (defaultBindingMode == BindingMode.Default)
 				defaultBindingMode = BindingMode.OneWay;
 
@@ -321,14 +325,9 @@ namespace Xamarin.Forms
 			}
 			else if (!ReturnTypeInfo.IsAssignableFrom(valueType.GetTypeInfo()))
 			{
-				// Is there an implicit cast operator ?
-				MethodInfo cast = type.GetRuntimeMethod("op_Implicit", new[] { valueType });
-				if (cast != null && cast.ReturnType != type)
-					cast = null;
-				if (cast == null)
-					cast = valueType.GetRuntimeMethod("op_Implicit", new[] { valueType });
-				if (cast != null && cast.ReturnType != type)
-					cast = null;
+				var cast = type.GetImplicitConversionOperator(fromType: valueType, toType: type)
+						?? valueType.GetImplicitConversionOperator(fromType: valueType, toType: type);
+
 				if (cast == null)
 					return false;
 

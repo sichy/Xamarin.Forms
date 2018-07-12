@@ -9,6 +9,10 @@ using Xamarin.Forms.Core.UITests;
 
 namespace Xamarin.Forms.Controls.Issues
 {
+#if UITEST
+	[Category(UITestCategories.Gestures)]
+#endif
+
 	[Preserve (AllMembers = true)]
 	[Issue (IssueTracker.Bugzilla, 39530, "Frames do not handle pan or pinch gestures under AppCompat", PlatformAffected.Android)]
 	public class Bugzilla39530 : TestContentPage
@@ -66,7 +70,7 @@ namespace Xamarin.Forms.Controls.Issues
 			// index out of bounds exceptions if the query for the frame and its Rect run quickly enough
 			RunningApp.WaitForElement(q => q.Marked("frame"));
 			AppRect frameBounds = RunningApp.Query (q => q.Marked ("frame"))[0].Rect;
-			RunningApp.Pan (new Drag (frameBounds, frameBounds.X + 10, frameBounds.Y + 10, frameBounds.X + 100, frameBounds.Y + 100, Drag.Direction.LeftToRight));
+			RunningApp.Pan (new Drag (frameBounds, frameBounds.CenterX, frameBounds.Y + 10, frameBounds.X + 100, frameBounds.Y + 100, Drag.Direction.LeftToRight));
 
 			RunningApp.WaitForElement (q => q.Marked ("Panning: Completed"));
 		}

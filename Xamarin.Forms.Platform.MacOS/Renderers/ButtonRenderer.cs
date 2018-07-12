@@ -47,7 +47,7 @@ namespace Xamarin.Forms.Platform.MacOS
 			else if (e.PropertyName == Button.FontProperty.PropertyName)
 				UpdateFont();
 			else if (e.PropertyName == Button.BorderWidthProperty.PropertyName ||
-					e.PropertyName == Button.BorderRadiusProperty.PropertyName ||
+					e.PropertyName == Button.CornerRadiusProperty.PropertyName ||
 					e.PropertyName == Button.BorderColorProperty.PropertyName)
 				UpdateBorder();
 			else if (e.PropertyName == VisualElement.BackgroundColorProperty.PropertyName)
@@ -78,7 +78,7 @@ namespace Xamarin.Forms.Platform.MacOS
 				uiButton.Layer.BorderColor = button.BorderColor.ToCGColor();
 
 			uiButton.Layer.BorderWidth = (float)button.BorderWidth;
-			uiButton.Layer.CornerRadius = button.BorderRadius;
+			uiButton.Layer.CornerRadius = button.CornerRadius;
 
 			UpdateBackgroundVisibility();
 		}
@@ -92,7 +92,7 @@ namespace Xamarin.Forms.Platform.MacOS
 		{
 			IImageSourceHandler handler;
 			FileImageSource source = Element.Image;
-			if (source != null && (handler = Internals.Registrar.Registered.GetHandler<IImageSourceHandler>(source.GetType())) != null)
+			if (source != null && (handler = Internals.Registrar.Registered.GetHandlerForObject<IImageSourceHandler>(source)) != null)
 			{
 				NSImage uiimage;
 				try

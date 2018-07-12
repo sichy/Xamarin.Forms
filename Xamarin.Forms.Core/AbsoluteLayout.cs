@@ -6,17 +6,25 @@ using Xamarin.Forms.Internals;
 
 namespace Xamarin.Forms
 {
-	public class AbsoluteLayout : Layout<View>
+	public class AbsoluteLayout : Layout<View>, IElementConfiguration<AbsoluteLayout>
 	{
 		public static readonly BindableProperty LayoutFlagsProperty = BindableProperty.CreateAttached("LayoutFlags", typeof(AbsoluteLayoutFlags), typeof(AbsoluteLayout), AbsoluteLayoutFlags.None);
 
 		public static readonly BindableProperty LayoutBoundsProperty = BindableProperty.CreateAttached("LayoutBounds", typeof(Rectangle), typeof(AbsoluteLayout), new Rectangle(0, 0, AutoSize, AutoSize));
 
 		readonly AbsoluteElementCollection _children;
+		readonly Lazy<PlatformConfigurationRegistry<AbsoluteLayout>> _platformConfigurationRegistry;
 
 		public AbsoluteLayout()
 		{
 			_children = new AbsoluteElementCollection(InternalChildren, this);
+			_platformConfigurationRegistry = new Lazy<PlatformConfigurationRegistry<AbsoluteLayout>>(() => 
+				new PlatformConfigurationRegistry<AbsoluteLayout>(this));
+		}
+
+		public IPlatformElementConfiguration<T, AbsoluteLayout> On<T>() where T : IConfigPlatform
+		{
+			return _platformConfigurationRegistry.Value.On<T>();
 		}
 
 		public static double AutoSize
@@ -224,7 +232,7 @@ namespace Xamarin.Forms
 
 			if (widthIsProportional)
 			{
-				result.Width = Math.Round(region.Width * bounds.Width);
+				result.Width = Device.Info.DisplayRound(region.Width * bounds.Width);
 			}
 			else if (bounds.Width != AutoSize)
 			{
@@ -233,7 +241,7 @@ namespace Xamarin.Forms
 
 			if (heightIsProportional)
 			{
-				result.Height = Math.Round(region.Height * bounds.Height);
+				result.Height = Device.Info.DisplayRound(region.Height * bounds.Height);
 			}
 			else if (bounds.Height != AutoSize)
 			{
@@ -265,7 +273,7 @@ namespace Xamarin.Forms
 
 			if (xIsProportional)
 			{
-				result.X = Math.Round((region.Width - result.Width) * bounds.X);
+				result.X = Device.Info.DisplayRound((region.Width - result.Width) * bounds.X);
 			}
 			else
 			{
@@ -274,7 +282,7 @@ namespace Xamarin.Forms
 
 			if (yIsProportional)
 			{
-				result.Y = Math.Round((region.Height - result.Height) * bounds.Y);
+				result.Y = Device.Info.DisplayRound((region.Height - result.Height) * bounds.Y);
 			}
 			else
 			{

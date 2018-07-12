@@ -23,7 +23,10 @@ using Fragment = Android.Support.V4.App.Fragment;
 using FragmentManager = Android.Support.V4.App.FragmentManager;
 using FragmentTransaction = Android.Support.V4.App.FragmentTransaction;
 using Object = Java.Lang.Object;
+using static Xamarin.Forms.PlatformConfiguration.AndroidSpecific.AppCompat.NavigationPage;
 using static Android.Views.View;
+using System.IO;
+using Android.Widget;
 
 namespace Xamarin.Forms.Platform.Android.AppCompat
 {
@@ -38,15 +41,31 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 		ActionBarDrawerToggle _drawerToggle;
 		FragmentManager _fragmentManager;
 		int _lastActionBarHeight = -1;
+		int _statusbarHeight;
 		AToolbar _toolbar;
 		ToolbarTracker _toolbarTracker;
 		DrawerMultiplexedListener _drawerListener;
 		DrawerLayout _drawerLayout;
+		MasterDetailPage _masterDetailPage;
 		bool _toolbarVisible;
+		IVisualElementRenderer _titleViewRenderer;
+		Container _titleView;
+		ImageView _titleIconView;
+		ImageSource _imageSource;
+		bool _isAttachedToWindow;
 
-		// The following is based on https://android.googlesource.com/platform/frameworks/support/+/refs/heads/master/v4/java/android/support/v4/app/FragmentManager.java#849
-		const int TransitionDuration = 220;
+		// The following is based on https://android.googlesource.com/platform/frameworks/support.git/+/4a7e12af4ec095c3a53bb8481d8d92f63157c3b7/v4/java/android/support/v4/app/FragmentManager.java#677
+		// Must be overriden in a custom renderer to match durations in XML animation resource files
+		protected virtual int TransitionDuration { get; set; } = 220;
 
+		public NavigationPageRenderer(Context context) : base(context)
+		{
+			AutoPackage = false;
+			Id = Platform.GenerateViewId();
+			Device.Info.PropertyChanged += DeviceInfoPropertyChanged;
+		}
+
+		[Obsolete("This constructor is obsolete as of version 2.5. Please use NavigationPageRenderer(Context) instead.")]
 		public NavigationPageRenderer()
 		{
 			AutoPackage = false;
@@ -54,7 +73,8 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			Device.Info.PropertyChanged += DeviceInfoPropertyChanged;
 		}
 
-		internal int ContainerPadding { get; set; }
+		internal int ContainerTopPadding { get; set; }
+		internal int ContainerBottomPadding { get; set; }
 
 		Page Current
 		{
@@ -77,9 +97,9 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			}
 		}
 
-		FragmentManager FragmentManager	=> _fragmentManager ?? (_fragmentManager = ((FormsAppCompatActivity)Context).SupportFragmentManager);
+		FragmentManager FragmentManager => _fragmentManager ?? (_fragmentManager = ((FormsAppCompatActivity)Context).SupportFragmentManager);
 
-		IPageController PageController => Element as IPageController;
+		IPageController PageController => Element;
 
 		bool ToolbarVisible
 		{
@@ -120,21 +140,22 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			{
 				_disposed = true;
 
-				var activity = (FormsAppCompatActivity)Context;
-
-				// API only exists on newer android YAY
-				if ((int)Build.VERSION.SdkInt >= 17)
+				if (_titleViewRenderer != null)
 				{
-					if (!activity.IsDestroyed)
-					{
-						FragmentManager fm = FragmentManager;
-						FragmentTransaction trans = fm.BeginTransaction();
-						foreach (Fragment fragment in _fragmentStack)
-							trans.Remove(fragment);
-						trans.CommitAllowingStateLoss();
-						fm.ExecutePendingTransactions();
-					}
+					Android.Platform.ClearRenderer(_titleViewRenderer.View);
+					_titleViewRenderer.Dispose();
+					_titleViewRenderer = null;
 				}
+
+				_toolbar.RemoveView(_titleView);
+				_titleView?.Dispose();
+				_titleView = null;
+
+				_toolbar.RemoveView(_titleIconView);
+				_titleIconView?.Dispose();
+				_titleIconView = null;
+
+				_imageSource = null;
 
 				if (_toolbarTracker != null)
 				{
@@ -199,6 +220,21 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 				}
 
 				Device.Info.PropertyChanged -= DeviceInfoPropertyChanged;
+
+				// API only exists on newer android YAY
+				if ((int)Build.VERSION.SdkInt >= 17)
+				{
+					FragmentManager fm = FragmentManager;
+
+					if (!fm.IsDestroyed)
+					{
+						FragmentTransaction trans = fm.BeginTransaction();
+						foreach (Fragment fragment in _fragmentStack)
+							trans.Remove(fragment);
+						trans.CommitAllowingStateLoss();
+						fm.ExecutePendingTransactions();
+					}
+				}
 			}
 
 			base.Dispose(disposing);
@@ -207,16 +243,31 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 		protected override void OnAttachedToWindow()
 		{
 			base.OnAttachedToWindow();
+
 			PageController.SendAppearing();
-			_fragmentStack.Last().UserVisibleHint = true;
+
+			// If the Appearing handler changed the application's main page for some reason,
+			// this page may no longer be part of the hierarchy; if so, we need to skip
+			// updating the toolbar and pushing the pages to avoid crashing the app
+			if (!IsAttachedToRoot())
+			{
+				return;
+			}
+
 			RegisterToolbar();
+
+			// If there is already stuff on the stack we need to push it
+			PushCurrentPages();
+
 			UpdateToolbar();
+			_isAttachedToWindow = true;
 		}
 
 		protected override void OnDetachedFromWindow()
 		{
 			base.OnDetachedFromWindow();
 			PageController.SendDisappearing();
+			_isAttachedToWindow = false;
 		}
 
 		protected override void OnElementChanged(ElementChangedEventArgs<NavigationPage> e)
@@ -267,10 +318,9 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 				navController.InsertPageBeforeRequested += OnInsertPageBeforeRequested;
 				navController.RemovePageRequested += OnRemovePageRequested;
 
-				// If there is already stuff on the stack we need to push it
-				foreach (Page page in navController.Pages)
+				if (_isAttachedToWindow && IsAttachedToRoot())
 				{
-					PushViewAsync(page, false);
+					PushCurrentPages();
 				}
 			}
 		}
@@ -282,6 +332,10 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			if (e.PropertyName == NavigationPage.BarBackgroundColorProperty.PropertyName)
 				UpdateToolbar();
 			else if (e.PropertyName == NavigationPage.BarTextColorProperty.PropertyName)
+				UpdateToolbar();
+			else if (e.PropertyName == NavigationPage.BackButtonTitleProperty.PropertyName)
+				UpdateToolbar();
+			else if (e.PropertyName == BarHeightProperty.PropertyName)
 				UpdateToolbar();
 		}
 
@@ -295,6 +349,9 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 
 			int barHeight = ActionBarHeight();
 
+			if (Element.IsSet(BarHeightProperty))
+				barHeight = Element.OnThisPlatform().GetBarHeight();
+
 			if (barHeight != _lastActionBarHeight && _lastActionBarHeight > 0)
 			{
 				ResetToolbar();
@@ -305,7 +362,7 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			bar.Measure(MeasureSpecFactory.MakeMeasureSpec(r - l, MeasureSpecMode.Exactly), MeasureSpecFactory.MakeMeasureSpec(barHeight, MeasureSpecMode.Exactly));
 
 			var barOffset = ToolbarVisible ? barHeight : 0;
-			int containerHeight = b - t - ContainerPadding - barOffset;
+			int containerHeight = b - t - ContainerTopPadding - barOffset - ContainerBottomPadding;
 
 			PageController.ContainerArea = new Rectangle(0, 0, Context.FromPixels(r - l), Context.FromPixels(containerHeight));
 
@@ -331,12 +388,12 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 				if (childHasNavBar)
 				{
 					bar.Layout(0, 0, r - l, barHeight);
-					child.Layout(0, barHeight + ContainerPadding, r, b);
+					child.Layout(0, barHeight + ContainerTopPadding, r, b - ContainerBottomPadding);
 				}
 				else
 				{
 					bar.Layout(0, -1000, r, barHeight - 1000);
-					child.Layout(0, ContainerPadding, r, b);
+					child.Layout(0, ContainerTopPadding, r, b - ContainerBottomPadding);
 				}
 				toolbarLayoutCompleted = true;
 			}
@@ -363,7 +420,7 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			else
 				transaction.SetTransition((int)FragmentTransit.FragmentClose);
 		}
-		
+
 		internal int GetNavBarHeight()
 		{
 			if (!ToolbarVisible)
@@ -387,6 +444,14 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			if (actionBarHeight <= 0)
 				return Device.Info.CurrentOrientation.IsPortrait() ? (int)Context.ToPixels(56) : (int)Context.ToPixels(48);
 
+			if (((Activity)Context).Window.Attributes.Flags.HasFlag(WindowManagerFlags.TranslucentStatus) || ((Activity)Context).Window.Attributes.Flags.HasFlag(WindowManagerFlags.TranslucentNavigation))
+			{
+				if (_toolbar.PaddingTop == 0)
+					_toolbar.SetPadding(0, GetStatusBarHeight(), 0, 0);
+
+				return actionBarHeight + GetStatusBarHeight();
+			}
+
 			return actionBarHeight;
 		}
 
@@ -400,6 +465,18 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			valueAnim.SetDuration(200);
 			valueAnim.Update += (s, a) => icon.Progress = (float)a.Animation.AnimatedValue;
 			valueAnim.Start();
+		}
+
+		int GetStatusBarHeight()
+		{
+			if (_statusbarHeight > 0)
+				return _statusbarHeight;
+
+			int resourceId = Resources.GetIdentifier("status_bar_height", "dimen", "android");
+			if (resourceId > 0)
+				_statusbarHeight = Resources.GetDimensionPixelSize(resourceId);
+
+			return _statusbarHeight;
 		}
 
 		void AnimateArrowOut()
@@ -427,6 +504,9 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 				UpdateToolbar();
 			else if (e.PropertyName == NavigationPage.HasBackButtonProperty.PropertyName)
 				UpdateToolbar();
+			else if (e.PropertyName == NavigationPage.TitleIconProperty.PropertyName ||
+					 e.PropertyName == NavigationPage.TitleViewProperty.PropertyName)
+				UpdateToolbar();
 		}
 
 #pragma warning disable 1998 // considered for removal
@@ -437,12 +517,7 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 				ResetToolbar();
 		}
 
-		void FilterPageFragment(Page page)
-		{
-			_fragmentStack.RemoveAll(f => ((FragmentContainer)f).Page == page);
-		}
-
-		void HandleToolbarItemPropertyChanged(object sender, PropertyChangedEventArgs e)
+		protected virtual void OnToolbarItemPropertyChanged(object sender, PropertyChangedEventArgs e)
 		{
 			if (e.PropertyName == MenuItem.IsEnabledProperty.PropertyName || e.PropertyName == MenuItem.TextProperty.PropertyName || e.PropertyName == MenuItem.IconProperty.PropertyName)
 				UpdateMenu();
@@ -450,6 +525,9 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 
 		void InsertPageBefore(Page page, Page before)
 		{
+			if (!_isAttachedToWindow)
+				PushCurrentPages();
+
 			UpdateToolbar();
 
 			int index = PageController.InternalChildren.IndexOf(before);
@@ -510,28 +588,28 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			AToolbar bar = _toolbar;
 			Element page = Element.RealParent;
 
-			MasterDetailPage masterDetailPage = null;
+			_masterDetailPage = null;
 			while (page != null)
 			{
 				if (page is MasterDetailPage)
 				{
-					masterDetailPage = page as MasterDetailPage;
+					_masterDetailPage = page as MasterDetailPage;
 					break;
 				}
 				page = page.RealParent;
 			}
 
-			if (masterDetailPage == null)
+			if (_masterDetailPage == null)
 			{
-				masterDetailPage = PageController.InternalChildren[0] as MasterDetailPage;
-				if (masterDetailPage == null)
+				_masterDetailPage = PageController.InternalChildren[0] as MasterDetailPage;
+				if (_masterDetailPage == null)
 					return;
 			}
 
-			if (((IMasterDetailPageController)masterDetailPage).ShouldShowSplitMode)
+			if (((IMasterDetailPageController)_masterDetailPage).ShouldShowSplitMode)
 				return;
 
-			var renderer = Android.Platform.GetRenderer(masterDetailPage) as MasterDetailPageRenderer;
+			var renderer = Android.Platform.GetRenderer(_masterDetailPage) as MasterDetailPageRenderer;
 			if (renderer == null)
 				return;
 
@@ -548,33 +626,45 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 
 			_drawerListener = new DrawerMultiplexedListener { Listeners = { _drawerToggle, renderer } };
 			_drawerLayout.AddDrawerListener(_drawerListener);
+		}
 
-			_drawerToggle.DrawerIndicatorEnabled = true;
+		Fragment GetPageFragment(Page page)
+		{
+			for (int n = 0; n < _fragmentStack.Count; n++)
+			{
+				if ((_fragmentStack[n] as FragmentContainer)?.Page == page)
+				{
+					return _fragmentStack[n];
+				}
+			}
+
+			return null;
 		}
 
 		void RemovePage(Page page)
 		{
-			IVisualElementRenderer rendererToRemove = Android.Platform.GetRenderer(page);
+			if (!_isAttachedToWindow)
+				PushCurrentPages();
 
-			if (rendererToRemove != null)
+			Fragment fragment = GetPageFragment(page);
+
+			if (fragment == null)
 			{
-				var containerToRemove = (PageContainer)rendererToRemove.View.Parent;
-
-				rendererToRemove.View?.RemoveFromParent();
-
-				rendererToRemove?.Dispose();
-
-				// This causes a NullPointerException in API 25.1+ when we later call ExecutePendingTransactions();
-				// We may want to remove this in the future if it is resolved in the Android SDK.
-				if ((int)Build.VERSION.SdkInt < 25)
-				{
-					containerToRemove?.RemoveFromParent();
-					containerToRemove?.Dispose();
-				}
+				return;
 			}
 
-			// Also remove this page from the fragmentStack
-			FilterPageFragment(page);
+#if DEBUG
+			// Enables logging of moveToState operations to logcat
+			FragmentManager.EnableDebugLogging(true);
+#endif
+
+			// Go ahead and take care of the fragment bookkeeping for the page being removed
+			FragmentTransaction transaction = FragmentManager.BeginTransaction();
+			transaction.Remove(fragment);
+			transaction.CommitAllowingStateLoss();
+
+			// And remove the fragment from our own stack
+			_fragmentStack.Remove(fragment);
 
 			Device.StartTimer(TimeSpan.FromMilliseconds(10), () =>
 			{
@@ -587,11 +677,30 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 		{
 			AToolbar oldToolbar = _toolbar;
 
+			if (_titleViewRenderer != null)
+			{
+				Android.Platform.ClearRenderer(_titleViewRenderer.View);
+				_titleViewRenderer = null;
+			}
+
+			_toolbar.RemoveView(_titleView);
+			_titleView = null;
+
+			_toolbar.RemoveView(_titleIconView);
+			_titleIconView = null;
+
+			_imageSource = null;
+
 			_toolbar.RemoveFromParent();
 			_toolbar.SetNavigationOnClickListener(null);
 			_toolbar = null;
 
 			SetupToolbar();
+
+			// if the old toolbar had padding from transluscentflags, set it to the new toolbar
+			if (oldToolbar.PaddingTop != 0)
+				_toolbar.SetPadding(0, oldToolbar.PaddingTop, 0, 0);
+
 			RegisterToolbar();
 			UpdateToolbar();
 			UpdateMenu();
@@ -628,6 +737,7 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			FragmentManager.EnableDebugLogging(true);
 #endif
 
+			Current?.SendDisappearing();
 			Current = page;
 
 			((Platform)Element.Platform).NavAnimationInProgress = true;
@@ -636,7 +746,7 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			if (animated)
 				SetupPageTransition(transaction, !removed);
 
-			transaction.DisallowAddToBackStack();
+			var fragmentsToRemove = new List<Fragment>();
 
 			if (_fragmentStack.Count == 0)
 			{
@@ -653,10 +763,11 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 					{
 						Fragment currentToRemove = _fragmentStack.Last();
 						_fragmentStack.RemoveAt(_fragmentStack.Count - 1);
-						transaction.Remove(currentToRemove);
+						transaction.Hide(currentToRemove);
+						fragmentsToRemove.Add(currentToRemove);
 						popPage = popToRoot;
 					}
-					
+
 					Fragment toShow = _fragmentStack.Last();
 					// Execute pending transactions so that we can be sure the fragment list is accurate.
 					FragmentManager.ExecutePendingTransactions();
@@ -693,34 +804,13 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 				else if (_drawerToggle != null && ((INavigationPageController)Element).StackDepth == 2)
 					AnimateArrowOut();
 
-				Device.StartTimer(TimeSpan.FromMilliseconds(TransitionDuration), () =>
-				{
-					tcs.TrySetResult(true);
-					fragment.UserVisibleHint = true;
-					if (removed)
-					{
-						UpdateToolbar();
-					}
-
-					return false;
-				});
+				AddTransitionTimer(tcs, fragment, FragmentManager, fragmentsToRemove, TransitionDuration, removed);
 			}
 			else
-			{
-				Device.StartTimer(TimeSpan.FromMilliseconds(1), () =>
-				{
-					tcs.TrySetResult(true);
-					fragment.UserVisibleHint = true;
-					UpdateToolbar();
-
-					return false;
-				});
-			}
+				AddTransitionTimer(tcs, fragment, FragmentManager, fragmentsToRemove, 1, true);
 
 			Context.HideKeyboard(this);
 			((Platform)Element.Platform).NavAnimationInProgress = false;
-
-			// TransitionDuration is how long the built-in animations are, and they are "reversible" in the sense that starting another one slightly before it's done is fine
 
 			return tcs.Task;
 		}
@@ -732,7 +822,7 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 				return _fragmentStack[_fragmentStack.Count - 2];
 
 			// pop to root
-			if(popToRoot)
+			if (popToRoot)
 				return _fragmentStack[0];
 
 			// push
@@ -754,13 +844,13 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			IMenu menu = bar.Menu;
 
 			foreach (ToolbarItem item in _toolbarTracker.ToolbarItems)
-				item.PropertyChanged -= HandleToolbarItemPropertyChanged;
+				item.PropertyChanged -= OnToolbarItemPropertyChanged;
 			menu.Clear();
 
 			foreach (ToolbarItem item in _toolbarTracker.ToolbarItems)
 			{
 				IMenuItemController controller = item;
-				item.PropertyChanged += HandleToolbarItemPropertyChanged;
+				item.PropertyChanged += OnToolbarItemPropertyChanged;
 				if (item.Order == ToolbarItemOrder.Secondary)
 				{
 					IMenuItem menuItem = menu.Add(item.Text);
@@ -770,16 +860,24 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 				else
 				{
 					IMenuItem menuItem = menu.Add(item.Text);
-					FileImageSource icon = item.Icon;
-					if (!string.IsNullOrEmpty(icon))
-					{
-						Drawable iconDrawable = context.Resources.GetFormsDrawable(icon);
-						if (iconDrawable != null)
-							menuItem.SetIcon(iconDrawable);
-					}
+					UpdateMenuItemIcon(context, menuItem, item);
 					menuItem.SetEnabled(controller.IsEnabled);
 					menuItem.SetShowAsAction(ShowAsAction.Always);
 					menuItem.SetOnMenuItemClickListener(new GenericMenuClickListener(controller.Activate));
+				}
+			}
+		}
+
+		protected virtual void UpdateMenuItemIcon(Context context, IMenuItem menuItem, ToolbarItem toolBarItem)
+		{
+			FileImageSource icon = toolBarItem.Icon;
+			if (!string.IsNullOrEmpty(icon))
+			{
+				Drawable iconDrawable = context.GetFormsDrawable(icon);
+				if (iconDrawable != null)
+				{
+					menuItem.SetIcon(iconDrawable);
+					iconDrawable.Dispose();
 				}
 			}
 		}
@@ -799,6 +897,7 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 
 			bool isNavigated = ((INavigationPageController)Element).StackDepth > 1;
 			bar.NavigationIcon = null;
+			Page currentPage = Element.CurrentPage;
 
 			if (isNavigated)
 			{
@@ -808,7 +907,7 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 					toggle.SyncState();
 				}
 
-				if (NavigationPage.GetHasBackButton(Element.CurrentPage))
+				if (NavigationPage.GetHasBackButton(currentPage))
 				{
 					var icon = new DrawerArrowDrawable(activity.SupportActionBar.ThemedContext);
 					icon.Progress = 1;
@@ -817,9 +916,9 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			}
 			else
 			{
-				if (toggle != null)
+				if (toggle != null && _masterDetailPage != null)
 				{
-					toggle.DrawerIndicatorEnabled = true;
+					toggle.DrawerIndicatorEnabled = _masterDetailPage.ShouldShowToolbarButton();
 					toggle.SyncState();
 				}
 			}
@@ -852,7 +951,157 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			if (!textColor.IsDefault)
 				bar.SetTitleTextColor(textColor.ToAndroid().ToArgb());
 
-			bar.Title = Element.CurrentPage.Title ?? "";
+			bar.Title = currentPage.Title ?? "";
+
+			UpdateTitleIcon();
+
+			UpdateTitleView();
+		}
+
+		void UpdateTitleIcon()
+		{
+			Page currentPage = Element.CurrentPage;
+			var source = NavigationPage.GetTitleIcon(currentPage);
+
+			if (source == null)
+			{
+				_toolbar.RemoveView(_titleIconView);
+				_titleIconView?.Dispose();
+				_titleIconView = null;
+				_imageSource = null;
+				return;
+			}
+
+			if (_titleIconView == null)
+			{
+				_titleIconView = new ImageView(Context);
+				_toolbar.AddView(_titleIconView, 0);
+			}
+
+			UpdateBitmap(source, _imageSource);
+			_imageSource = source;
+		}
+
+		async void UpdateBitmap(ImageSource source, ImageSource previousSource = null)
+		{
+			if (Equals(source, previousSource))
+				return;
+
+			_titleIconView.SetImageResource(global::Android.Resource.Color.Transparent);
+
+			Bitmap bitmap = null;
+			IImageSourceHandler handler;
+
+			if (source != null && (handler = Registrar.Registered.GetHandlerForObject<IImageSourceHandler>(source)) != null)
+			{
+				try
+				{
+					bitmap = await handler.LoadImageAsync(source, Context);
+				}
+				catch (TaskCanceledException)
+				{
+				}
+				catch (IOException ex)
+				{
+					Internals.Log.Warning("Xamarin.Forms.Platform.Android.AppCompat.NavigationPageRenderer", "Error updating bitmap: {0}", ex);
+				}
+			}
+
+			if (bitmap == null && source is FileImageSource)
+				_titleIconView.SetImageResource(ResourceManager.GetDrawableByName(((FileImageSource)source).File));
+			else
+				_titleIconView.SetImageBitmap(bitmap);
+
+			bitmap?.Dispose();
+		}
+
+		void UpdateTitleView()
+		{
+			AToolbar bar = _toolbar;
+
+			if (bar == null)
+				return;
+
+			Page currentPage = Element.CurrentPage;
+			VisualElement titleView = NavigationPage.GetTitleView(currentPage);
+			if (_titleViewRenderer != null)
+			{
+				var reflectableType = _titleViewRenderer as System.Reflection.IReflectableType;
+				var rendererType = reflectableType != null ? reflectableType.GetTypeInfo().AsType() : _titleViewRenderer.GetType();
+				if (titleView == null || Registrar.Registered.GetHandlerTypeForObject(titleView) != rendererType)
+				{
+					if (_titleView != null)
+						_titleView.Child = null;
+					Android.Platform.ClearRenderer(_titleViewRenderer.View);
+					_titleViewRenderer.Dispose();
+					_titleViewRenderer = null;
+				}
+			}
+
+			if (titleView == null)
+				return;
+
+			if (_titleViewRenderer != null)
+				_titleViewRenderer.SetElement(titleView);
+			else
+			{
+				_titleViewRenderer = Android.Platform.CreateRenderer(titleView, Context);
+
+				if (_titleView == null)
+				{
+					_titleView = new Container(Context);
+					bar.AddView(_titleView);
+				}
+
+				_titleView.Child = _titleViewRenderer;
+			}
+
+			Android.Platform.SetRenderer(titleView, _titleViewRenderer);
+		}
+
+		void AddTransitionTimer(TaskCompletionSource<bool> tcs, Fragment fragment, FragmentManager fragmentManager, IReadOnlyCollection<Fragment> fragmentsToRemove, int duration, bool shouldUpdateToolbar)
+		{
+			Device.StartTimer(TimeSpan.FromMilliseconds(duration), () =>
+			{
+				tcs.TrySetResult(true);
+				Current?.SendAppearing();
+				if (shouldUpdateToolbar)
+					UpdateToolbar();
+
+				FragmentTransaction fragmentTransaction = fragmentManager.BeginTransaction();
+
+				foreach (Fragment frag in fragmentsToRemove)
+					fragmentTransaction.Remove(frag);
+
+				fragmentTransaction.CommitAllowingStateLoss();
+
+				return false;
+			});
+		}
+		
+		void PushCurrentPages()
+		{
+			if (_fragmentStack.Count > 0)
+				return;
+
+			var navController = (INavigationPageController)Element;
+
+			foreach (Page page in navController.Pages)
+			{
+				PushViewAsync(page, false);
+			}
+		}
+
+		bool IsAttachedToRoot()
+		{
+			var root = (Page)Element;
+
+			while (!Application.IsApplicationOrNull(root.RealParent))
+			{
+				root = (Page)root.RealParent;
+			}
+
+			return root.RealParent != null;
 		}
 
 		class ClickListener : Object, IOnClickListener
@@ -867,6 +1116,66 @@ namespace Xamarin.Forms.Platform.Android.AppCompat
 			public void OnClick(AView v)
 			{
 				_element?.PopAsync();
+			}
+		}
+
+		internal class Container : ViewGroup
+		{
+			IVisualElementRenderer _child;
+
+			public Container(IntPtr p, global::Android.Runtime.JniHandleOwnership o) : base(p, o)
+			{
+				// Added default constructor to prevent crash in Dispose
+			}
+
+			public Container(Context context) : base(context)
+			{
+			}
+
+			public IVisualElementRenderer Child
+			{
+				set
+				{
+					if (_child != null)
+						RemoveView(_child.View);
+
+					_child = value;
+
+					if (value != null)
+						AddView(value.View);
+				}
+			}
+
+			protected override void OnLayout(bool changed, int l, int t, int r, int b)
+			{
+				if (_child == null)
+					return;
+
+				_child.UpdateLayout();
+			}
+
+			protected override void OnMeasure(int widthMeasureSpec, int heightMeasureSpec)
+			{
+				if (_child == null)
+				{
+					SetMeasuredDimension(0, 0);
+					return;
+				}
+
+				VisualElement element = _child.Element;
+
+				Context ctx = Context;
+
+				var width = (int)ctx.FromPixels(MeasureSpecFactory.GetSize(widthMeasureSpec));
+
+				SizeRequest request = _child.Element.Measure(width, double.PositiveInfinity, MeasureFlags.IncludeMargins);
+				Xamarin.Forms.Layout.LayoutChildIntoBoundingRegion(_child.Element, new Rectangle(0, 0, width, request.Request.Height));
+
+				int widthSpec = MeasureSpecFactory.MakeMeasureSpec((int)ctx.ToPixels(width), MeasureSpecMode.Exactly);
+				int heightSpec = MeasureSpecFactory.MakeMeasureSpec((int)ctx.ToPixels(request.Request.Height), MeasureSpecMode.Exactly);
+
+				_child.View.Measure(widthMeasureSpec, heightMeasureSpec);
+				SetMeasuredDimension(widthSpec, heightSpec);
 			}
 		}
 

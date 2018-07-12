@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
+using Android.Content;
 using Android.Graphics;
 using Android.Views;
 using AImageView = Android.Widget.ImageView;
@@ -18,6 +19,12 @@ namespace Xamarin.Forms.Platform.Android
 		bool _isDisposed;
 		readonly MotionEventHelper _motionEventHelper = new MotionEventHelper();
 
+		public ImageRenderer(Context context) : base(context)
+		{
+			AutoPackage = false;
+		}
+
+		[Obsolete("This constructor is obsolete as of version 2.5. Please use ImageRenderer(Context) instead.")]
 		public ImageRenderer()
 		{
 			AutoPackage = false;
@@ -106,12 +113,12 @@ namespace Xamarin.Forms.Platform.Android
 			await Control.UpdateBitmap(Element, previous);
 		}
 
-        public override bool OnTouchEvent(MotionEvent e)
-        {
-            if (base.OnTouchEvent(e))
-                return true;
+		public override bool OnTouchEvent(MotionEvent e)
+		{
+			if (base.OnTouchEvent(e))
+				return true;
 
-            return _motionEventHelper.HandleMotionEvent(Parent, e);
-        }
-    }
+			return _motionEventHelper.HandleMotionEvent(Parent, e);
+		}
+	}
 }

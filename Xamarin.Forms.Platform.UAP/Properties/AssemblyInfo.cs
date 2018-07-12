@@ -1,13 +1,8 @@
 ﻿using System.Reflection;
-using System.Runtime.InteropServices;
 using Xamarin.Forms;
 using Xamarin.Forms.Platform.UWP;
 
-[assembly: AssemblyTitle("Xamarin.Forms.Platform.UAP")]
-[assembly: AssemblyDescription("")]
-[assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCulture("")]
-[assembly: ComVisible(false)]
+
 [assembly: Dependency(typeof(WindowsSerializer))]
 
 // Views
@@ -57,3 +52,6 @@ using Xamarin.Forms.Platform.UWP;
 [assembly: Dependency(typeof(WindowsResourcesProvider))]
 [assembly: ExportRenderer(typeof(SearchBar), typeof(SearchBarRenderer))]
 [assembly: ExportRenderer(typeof(TabbedPage), typeof(TabbedPageRenderer))]
+
+[assembly: AssemblyVersion("2.0.0.0")]
+[assembly: AssemblyFileVersion("2.0.0.0")]

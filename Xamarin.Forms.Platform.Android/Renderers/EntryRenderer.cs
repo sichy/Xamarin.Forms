@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using Android.Content;
 using Android.Content.Res;
 using Android.Text;
 using Android.Text.Method;
@@ -8,17 +10,24 @@ using Android.Views;
 using Android.Views.InputMethods;
 using Android.Widget;
 using Java.Lang;
-using Xamarin.Forms.Internals;
 using Xamarin.Forms.PlatformConfiguration.AndroidSpecific;
 
 namespace Xamarin.Forms.Platform.Android
 {
 	public class EntryRenderer : ViewRenderer<Entry, FormsEditText>, ITextWatcher, TextView.IOnEditorActionListener
 	{
-		ColorStateList _hintTextColorDefault;
-		ColorStateList _textColorDefault;
+		TextColorSwitcher _hintColorSwitcher;
+		TextColorSwitcher _textColorSwitcher;
 		bool _disposed;
+		ImeAction _currentInputImeFlag;
+		IElementController ElementController => Element as IElementController;
 
+		public EntryRenderer(Context context) : base(context)
+		{
+			AutoPackage = false;
+		}
+
+		[Obsolete("This constructor is obsolete as of version 2.5. Please use EntryRenderer(Context) instead.")]
 		public EntryRenderer()
 		{
 			AutoPackage = false;
@@ -27,7 +36,7 @@ namespace Xamarin.Forms.Platform.Android
 		bool TextView.IOnEditorActionListener.OnEditorAction(TextView v, ImeAction actionId, KeyEvent e)
 		{
 			// Fire Completed and dismiss keyboard for hardware / physical keyboards
-			if (actionId == ImeAction.Done || (actionId == ImeAction.ImeNull && e.KeyCode == Keycode.Enter))
+			if (actionId == ImeAction.Done || actionId == _currentInputImeFlag || (actionId == ImeAction.ImeNull && e.KeyCode == Keycode.Enter && e.Action == KeyEventActions.Up))
 			{
 				Control.ClearFocus();
 				v.HideKeyboard();
@@ -67,10 +76,16 @@ namespace Xamarin.Forms.Platform.Android
 			if (e.OldElement == null)
 			{
 				var textView = CreateNativeControl();
-				textView.ImeOptions = ImeAction.Done;
+
 				textView.AddTextChangedListener(this);
 				textView.SetOnEditorActionListener(this);
 				textView.OnKeyboardBackPressed += OnKeyboardBackPressed;
+				textView.SelectionChanged += SelectionChanged;
+
+				var useLegacyColorManagement = e.NewElement.UseLegacyColorManagement();
+
+				_textColorSwitcher = new TextColorSwitcher(textView.TextColors, useLegacyColorManagement);
+				_hintColorSwitcher = new TextColorSwitcher(textView.HintTextColors, useLegacyColorManagement);
 				SetNativeControl(textView);
 			}
 
@@ -82,6 +97,10 @@ namespace Xamarin.Forms.Platform.Android
 			UpdateAlignment();
 			UpdateFont();
 			UpdatePlaceholderColor();
+			UpdateMaxLength();
+			UpdateImeOptions();
+			UpdateReturnType();
+			UpdateCursorSelection();
 		}
 
 		protected override void Dispose(bool disposing)
@@ -98,12 +117,13 @@ namespace Xamarin.Forms.Platform.Android
 				if (Control != null)
 				{
 					Control.OnKeyboardBackPressed -= OnKeyboardBackPressed;
+					Control.SelectionChanged -= SelectionChanged;
 				}
 			}
 
 			base.Dispose(disposing);
 		}
-		
+
 		protected override void OnElementPropertyChanged(object sender, PropertyChangedEventArgs e)
 		{
 			if (e.PropertyName == Entry.PlaceholderProperty.PropertyName)
@@ -126,6 +146,10 @@ namespace Xamarin.Forms.Platform.Android
 				UpdateColor();
 			else if (e.PropertyName == InputView.KeyboardProperty.PropertyName)
 				UpdateInputType();
+			else if (e.PropertyName == InputView.IsSpellCheckEnabledProperty.PropertyName)
+				UpdateInputType();
+			else if (e.PropertyName == Entry.IsTextPredictionEnabledProperty.PropertyName)
+				UpdateInputType();
 			else if (e.PropertyName == Entry.HorizontalTextAlignmentProperty.PropertyName)
 				UpdateAlignment();
 			else if (e.PropertyName == Entry.FontAttributesProperty.PropertyName)
@@ -136,47 +160,45 @@ namespace Xamarin.Forms.Platform.Android
 				UpdateFont();
 			else if (e.PropertyName == Entry.PlaceholderColorProperty.PropertyName)
 				UpdatePlaceholderColor();
+			else if (e.PropertyName == VisualElement.FlowDirectionProperty.PropertyName)
+				UpdateAlignment();
+			else if (e.PropertyName == InputView.MaxLengthProperty.PropertyName)
+				UpdateMaxLength();
+			else if (e.PropertyName == PlatformConfiguration.AndroidSpecific.Entry.ImeOptionsProperty.PropertyName)
+				UpdateImeOptions();
+			else if (e.PropertyName == Entry.ReturnTypeProperty.PropertyName)
+				UpdateReturnType();
+			else if (e.PropertyName == Entry.CursorPositionProperty.PropertyName || e.PropertyName == Entry.SelectionLengthProperty.PropertyName)
+				UpdateCursorSelection();
 
 			base.OnElementPropertyChanged(sender, e);
 		}
 
 		protected virtual NumberKeyListener GetDigitsKeyListener(InputTypes inputTypes)
 		{
-			// Override this in a custom renderer to use a different NumberKeyListener 
-			// or to filter out input types you don't want to allow 
+			// Override this in a custom renderer to use a different NumberKeyListener
+			// or to filter out input types you don't want to allow
 			// (e.g., inputTypes &= ~InputTypes.NumberFlagSigned to disallow the sign)
 			return LocalizedDigitsKeyListener.Create(inputTypes);
 		}
 
+		protected virtual void UpdateImeOptions()
+		{
+			if (Element == null || Control == null)
+				return;
+			var imeOptions = Element.OnThisPlatform().ImeOptions();
+			_currentInputImeFlag = imeOptions.ToAndroidImeOptions();
+			Control.ImeOptions = _currentInputImeFlag;
+		}
+
 		void UpdateAlignment()
 		{
-			Control.Gravity = Element.HorizontalTextAlignment.ToHorizontalGravityFlags();
+			Control.UpdateHorizontalAlignment(Element.HorizontalTextAlignment, Context.HasRtlSupport());
 		}
 
 		void UpdateColor()
 		{
-			if (Element.TextColor.IsDefault)
-			{
-				if (_textColorDefault == null)
-				{
-					// This control has always had the default colors; nothing to update
-					return;
-				}
-
-				// This control is being set back to the default colors
-				Control.SetTextColor(_textColorDefault);
-			}
-			else
-			{
-				if (_textColorDefault == null)
-				{
-					// Keep track of the default colors so we can return to them later
-					// and so we can preserve the default disabled color
-					_textColorDefault = Control.TextColors;
-				}
-
-				Control.SetTextColor(Element.TextColor.ToAndroidPreserveDisabled(_textColorDefault));
-			}
+			_textColorSwitcher.UpdateTextColor(Control, Element.TextColor);
 		}
 
 		void UpdateFont()
@@ -191,6 +213,25 @@ namespace Xamarin.Forms.Platform.Android
 			var keyboard = model.Keyboard;
 
 			Control.InputType = keyboard.ToInputType();
+			if (!(keyboard is Internals.CustomKeyboard))
+			{
+				if (model.IsSet(InputView.IsSpellCheckEnabledProperty))
+				{
+					if ((Control.InputType & InputTypes.TextFlagNoSuggestions) != InputTypes.TextFlagNoSuggestions)
+					{
+						if (!model.IsSpellCheckEnabled)
+							Control.InputType = Control.InputType | InputTypes.TextFlagNoSuggestions;
+					}
+				}
+				if (model.IsSet(Entry.IsTextPredictionEnabledProperty))
+				{
+					if ((Control.InputType & InputTypes.TextFlagNoSuggestions) != InputTypes.TextFlagNoSuggestions)
+					{
+						if (!model.IsTextPredictionEnabled)
+							Control.InputType = Control.InputType | InputTypes.TextFlagNoSuggestions;
+					}
+				}
+			}
 
 			if (keyboard == Keyboard.Numeric)
 			{
@@ -205,35 +246,80 @@ namespace Xamarin.Forms.Platform.Android
 
 		void UpdatePlaceholderColor()
 		{
-			Color placeholderColor = Element.PlaceholderColor;
-
-			if (placeholderColor.IsDefault)
-			{
-				if (_hintTextColorDefault == null)
-				{
-					// This control has always had the default colors; nothing to update
-					return;
-				}
-
-				// This control is being set back to the default colors
-				Control.SetHintTextColor(_hintTextColorDefault);
-			}
-			else
-			{
-				if (_hintTextColorDefault == null)
-				{
-					// Keep track of the default colors so we can return to them later
-					// and so we can preserve the default disabled color
-					_hintTextColorDefault = Control.HintTextColors;
-				}
-
-				Control.SetHintTextColor(placeholderColor.ToAndroidPreserveDisabled(_hintTextColorDefault));
-			}
+			_hintColorSwitcher.UpdateTextColor(Control, Element.PlaceholderColor, Control.SetHintTextColor);
 		}
 
 		void OnKeyboardBackPressed(object sender, EventArgs eventArgs)
 		{
 			Control?.ClearFocus();
+		}
+
+		void UpdateMaxLength()
+		{
+			var currentFilters = new List<IInputFilter>(Control?.GetFilters() ?? new IInputFilter[0]);
+
+			for (var i = 0; i < currentFilters.Count; i++)
+			{
+				if (currentFilters[i] is InputFilterLengthFilter)
+				{
+					currentFilters.RemoveAt(i);
+					break;
+				}
+			}
+
+			currentFilters.Add(new InputFilterLengthFilter(Element.MaxLength));
+
+			Control?.SetFilters(currentFilters.ToArray());
+
+			var currentControlText = Control?.Text;
+
+			if (currentControlText.Length > Element.MaxLength)
+				Control.Text = currentControlText.Substring(0, Element.MaxLength);
+		}
+
+		void UpdateReturnType()
+		{
+			if (Control == null || Element == null)
+				return;
+			
+			Control.ImeOptions = Element.ReturnType.ToAndroidImeAction();
+			_currentInputImeFlag = Control.ImeOptions;
+		}
+
+		void SelectionChanged(object sender, SelectionChangedEventArgs e)
+		{
+			var control = Control;
+			if (control == null || Element == null)
+				return;
+
+			var start = Element.CursorPosition;
+
+			if (control.SelectionStart != start)
+				ElementController?.SetValueFromRenderer(Entry.CursorPositionProperty, control.SelectionStart);
+
+			var selectionLength = control.SelectionEnd - control.SelectionStart;
+			if (selectionLength != Element.SelectionLength)
+				ElementController?.SetValueFromRenderer(Entry.SelectionLengthProperty, selectionLength);
+		}
+
+
+		void UpdateCursorSelection()
+		{
+			var control = Control;
+			if (control == null || Element == null)
+				return;
+
+			if (Element.IsSet(Entry.CursorPositionProperty) || Element.IsSet(Entry.SelectionLengthProperty))
+			{
+				var start = Element.CursorPosition;
+				var end = System.Math.Min(control.Length(), Element.CursorPosition + Element.SelectionLength);
+
+				if (control.SelectionStart != start || control.SelectionEnd != end)
+				{
+					control.SetSelection(start, end);
+					control.RequestFocus();
+				}
+			}
 		}
 	}
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using RectangleF = CoreGraphics.CGRect;
 using SizeF = CoreGraphics.CGSize;
+using Xamarin.Forms.Internals;
 
 #if __MOBILE__
 using Xamarin.Forms.PlatformConfiguration.iOSSpecific;
@@ -17,6 +18,7 @@ using AppKit;
 using NativeView = AppKit.NSView;
 using NativeViewController = AppKit.NSViewController;
 using NativeColor = AppKit.NSColor;
+using Xamarin.Forms.Platform.macOS.Extensions;
 
 namespace Xamarin.Forms.Platform.MacOS
 #endif
@@ -153,6 +155,8 @@ namespace Xamarin.Forms.Platform.MacOS
 			var oldElement = Element;
 			Element = element;
 
+			Performance.Start(out string reference);
+
 			if (oldElement != null)
 				oldElement.PropertyChanged -= _propertyChangedHandler;
 
@@ -199,6 +203,7 @@ namespace Xamarin.Forms.Platform.MacOS
 			SetAccessibilityHint();
 			SetIsAccessibilityElement();
 #endif
+			Performance.Stop(reference);
 		}
 
 #if __MOBILE__
@@ -224,6 +229,15 @@ namespace Xamarin.Forms.Platform.MacOS
 
 			if (Element.InputTransparent || inViewCell)
 				base.MouseDown(theEvent);
+		}
+
+		public override void RightMouseUp(NSEvent theEvent)
+		{
+			var menu = Xamarin.Forms.Element.GetMenu(Element);
+			if (menu != null && NativeView != null)
+				NSMenu.PopUpContextMenu(menu.ToNSMenu(), theEvent, NativeView);
+		
+			base.RightMouseUp(theEvent);
 		}
 #endif
 
@@ -251,11 +265,11 @@ namespace Xamarin.Forms.Platform.MacOS
 					_packager = null;
 				}
 
-				// The ListView can create renderers and unhook them from the Element before Dispose is called.
+				// The ListView can create renderers and unhook them from the Element before Dispose is called in CalculateHeightForCell.
 				// Thus, it is possible that this work is already completed.
 				if (Element != null)
 				{
-					Platform.SetRenderer(Element, null);
+					Element.ClearValue(Platform.RendererProperty);
 					SetElement(null);
 				}
 			}
@@ -389,6 +403,7 @@ namespace Xamarin.Forms.Platform.MacOS
 			}
 
 			_blur = new UIVisualEffectView(blurEffect);
+			_blur.UserInteractionEnabled = false;
 			LayoutSubviews();
 		}
 #endif

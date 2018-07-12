@@ -23,7 +23,7 @@ namespace Xamarin.Forms.Platform.Android
 
 		public AView GetCell(Cell item, AView convertView, ViewGroup parent, Context context)
 		{
-			Performance.Start();
+			Performance.Start(out string reference);
 			
 			Cell = item;
 			Cell.PropertyChanged -= PropertyChangedHandler;
@@ -61,14 +61,14 @@ namespace Xamarin.Forms.Platform.Android
 			Cell.PropertyChanged += PropertyChangedHandler;
 			((ICellController)Cell).SendAppearing();
 
-			Performance.Stop();
+			Performance.Stop(reference);
 
 			return view;
 		}
 
 		protected virtual AView GetCellCore(Cell item, AView convertView, ViewGroup parent, Context context)
 		{
-			Performance.Start();
+			Performance.Start(out string reference, "GetCellCore");
 
 			LayoutInflater inflater = LayoutInflater.FromContext(context);
 			const int type = global::Android.Resource.Layout.SimpleListItem1;
@@ -79,7 +79,7 @@ namespace Xamarin.Forms.Platform.Android
 			textView.SetBackgroundColor(global::Android.Graphics.Color.Transparent);
 			view.SetBackgroundColor(global::Android.Graphics.Color.Black);
 
-			Performance.Stop();
+			Performance.Stop(reference, "GetCellCore");
 
 			return view;
 		}
@@ -95,6 +95,8 @@ namespace Xamarin.Forms.Platform.Android
 
 			_onForceUpdateSizeRequested = (sender, e) => 
 			{
+				if (nativeCell.Handle == IntPtr.Zero)
+					return;
 				// RenderHeight may not be changed, but that's okay, since we
 				// don't actually use the height argument in the OnMeasure override.
 				nativeCell.Measure(nativeCell.Width, (int)cell.RenderHeight);

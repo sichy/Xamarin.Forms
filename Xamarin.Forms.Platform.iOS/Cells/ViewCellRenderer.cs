@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using UIKit;
+using Xamarin.Forms.Internals;
 using RectangleF = CoreGraphics.CGRect;
 using SizeF = CoreGraphics.CGSize;
 
@@ -10,6 +11,8 @@ namespace Xamarin.Forms.Platform.iOS
 	{
 		public override UITableViewCell GetCell(Cell item, UITableViewCell reusableCell, UITableView tv)
 		{
+			Performance.Start(out string reference);
+
 			var viewCell = (ViewCell)item;
 
 			var cell = reusableCell as ViewTableCell;
@@ -27,6 +30,8 @@ namespace Xamarin.Forms.Platform.iOS
 
 			UpdateBackground(cell, item);
 			UpdateIsEnabled(cell, viewCell);
+
+			Performance.Stop(reference);
 			return cell;
 		}
 
@@ -71,6 +76,8 @@ namespace Xamarin.Forms.Platform.iOS
 
 			public override void LayoutSubviews()
 			{
+				Performance.Start(out string reference);
+
 				//This sets the content views frame.
 				base.LayoutSubviews();
 
@@ -92,10 +99,14 @@ namespace Xamarin.Forms.Platform.iOS
 				IVisualElementRenderer renderer;
 				if (_rendererRef.TryGetTarget(out renderer))
 					renderer.NativeView.Frame = view.Bounds.ToRectangleF();
+
+				Performance.Stop(reference);
 			}
 
 			public override SizeF SizeThatFits(SizeF size)
 			{
+				Performance.Start(out string reference);
+
 				IVisualElementRenderer renderer;
 				if (!_rendererRef.TryGetTarget(out renderer))
 					return base.SizeThatFits(size);
@@ -105,10 +116,13 @@ namespace Xamarin.Forms.Platform.iOS
 
 				double width = size.Width;
 				var height = size.Height > 0 ? size.Height : double.PositiveInfinity;
-				var result = renderer.Element.Measure(width, height);
+				var result = renderer.Element.Measure(width, height, MeasureFlags.IncludeMargins);
 
 				// make sure to add in the separator if needed
 				var finalheight = (float)result.Request.Height + (SupressSeparator ? 0f : 1f) / UIScreen.MainScreen.Scale;
+
+				Performance.Stop(reference);
+
 				return new SizeF(size.Width, finalheight);
 			}
 
@@ -150,6 +164,8 @@ namespace Xamarin.Forms.Platform.iOS
 
 			void UpdateCell(ViewCell cell)
 			{
+				Performance.Start(out string reference);
+
 				if (_viewCell != null)
 					Device.BeginInvokeOnMainThread(_viewCell.SendDisappearing);
 
@@ -166,8 +182,10 @@ namespace Xamarin.Forms.Platform.iOS
 					if (renderer.Element != null && renderer == Platform.GetRenderer(renderer.Element))
 						renderer.Element.ClearValue(Platform.RendererProperty);
 
-					var type = Internals.Registrar.Registered.GetHandlerType(this._viewCell.View.GetType());
-					if (renderer.GetType() == type || (renderer is Platform.DefaultRenderer && type == null))
+					var type = Internals.Registrar.Registered.GetHandlerTypeForObject(this._viewCell.View);
+					var reflectableType = renderer as System.Reflection.IReflectableType;
+					var rendererType = reflectableType != null ? reflectableType.GetTypeInfo().AsType() : renderer.GetType();
+					if (rendererType == type || (renderer is Platform.DefaultRenderer && type == null))
 						renderer.SetElement(this._viewCell.View);
 					else
 					{
@@ -180,6 +198,7 @@ namespace Xamarin.Forms.Platform.iOS
 				}
 
 				Platform.SetRenderer(this._viewCell.View, renderer);
+				Performance.Stop(reference);
 			}
 		}
 	}

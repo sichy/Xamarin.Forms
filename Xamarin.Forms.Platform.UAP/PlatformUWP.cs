@@ -17,6 +17,7 @@ namespace Xamarin.Forms.Platform.UWP
 	public abstract partial class Platform
 	{
 		internal static StatusBar MobileStatusBar => ApiInformation.IsTypePresent("Windows.UI.ViewManagement.StatusBar") ? StatusBar.GetForCurrentView() : null;
+		static Task<bool> s_currentAlert;
 
 		IToolbarProvider _toolbarProvider;
 
@@ -44,6 +45,12 @@ namespace Xamarin.Forms.Platform.UWP
 			}
 		}
 
+		internal static void SubscribeAlertsAndActionSheets()
+		{
+			MessagingCenter.Subscribe<Page, AlertArguments>(Window.Current, Page.AlertSignalName, OnPageAlert);
+			MessagingCenter.Subscribe<Page, ActionSheetArguments>(Window.Current, Page.ActionSheetSignalName, OnPageActionSheet);
+		}
+
 		void UpdateToolbarTitle(Page page)
 		{
 			if (_toolbarProvider == null)
@@ -52,59 +59,66 @@ namespace Xamarin.Forms.Platform.UWP
 			((ToolbarProvider)_toolbarProvider).CommandBar.Content = page.Title;
 		}
 
-		async void OnPageActionSheet(Page sender, ActionSheetArguments options)
+		static void OnPageActionSheet(object sender, ActionSheetArguments options)
 		{
-			List<string> buttons = options.Buttons.ToList();
+			bool userDidSelect = false;
+			var flyoutContent = new FormsFlyout(options);
 
-			var list = new Windows.UI.Xaml.Controls.ListView
+			var actionSheet = new Flyout
 			{
-				Style = (Windows.UI.Xaml.Style)Windows.UI.Xaml.Application.Current.Resources["ActionSheetList"],
-				ItemsSource = buttons,
-				IsItemClickEnabled = true
+				FlyoutPresenterStyle = (Windows.UI.Xaml.Style)Windows.UI.Xaml.Application.Current.Resources["FormsFlyoutPresenterStyle"],
+				Placement = Windows.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Full,
+				Content = flyoutContent
 			};
 
-			var dialog = new ContentDialog
+			flyoutContent.OptionSelected += (s, e) =>
 			{
-				Template = (Windows.UI.Xaml.Controls.ControlTemplate)Windows.UI.Xaml.Application.Current.Resources["MyContentDialogControlTemplate"],
-				Content = list,
-				Style = (Windows.UI.Xaml.Style)Windows.UI.Xaml.Application.Current.Resources["ActionSheetStyle"]
+				userDidSelect = true;
+				actionSheet.Hide();
 			};
 
-			if (options.Title != null)
-				dialog.Title = options.Title;
-
-			list.ItemClick += (s, e) =>
+			actionSheet.Closed += (s, e) =>
 			{
-				dialog.Hide();
-				options.SetResult((string)e.ClickedItem);
+				if (!userDidSelect)
+					options.SetResult(null);
 			};
 
-			TypedEventHandler<CoreWindow, CharacterReceivedEventArgs> onEscapeButtonPressed = delegate (CoreWindow window, CharacterReceivedEventArgs args)
+			actionSheet.ShowAt(((Page)sender).GetOrCreateRenderer().ContainerElement);
+		}
+
+		static async void OnPageAlert(Page sender, AlertArguments options)
+		{
+			string content = options.Message ?? string.Empty;
+			string title = options.Title ?? string.Empty;
+
+			var alertDialog = new AlertDialog
 			{
-				if (args.KeyCode == 27)
-				{
-					dialog.Hide();
-					options.SetResult(ContentDialogResult.None.ToString());
-				}
+				Content = content,
+				Title = title,
+				VerticalScrollBarVisibility = Windows.UI.Xaml.Controls.ScrollBarVisibility.Auto
 			};
-
-			Window.Current.CoreWindow.CharacterReceived += onEscapeButtonPressed;
-
-			_actionSheetOptions = options;
 
 			if (options.Cancel != null)
-				dialog.SecondaryButtonText = options.Cancel;
+				alertDialog.SecondaryButtonText = options.Cancel;
 
-			if (options.Destruction != null)
-				dialog.PrimaryButtonText = options.Destruction;
+			if (options.Accept != null)
+				alertDialog.PrimaryButtonText = options.Accept;
 
-			ContentDialogResult result = await dialog.ShowAsync();
-			if (result == ContentDialogResult.Secondary)
-				options.SetResult(options.Cancel);
-			else if (result == ContentDialogResult.Primary)
-				options.SetResult(options.Destruction);
+			while (s_currentAlert != null)
+			{
+				await s_currentAlert;
+			}
 
-			Window.Current.CoreWindow.CharacterReceived -= onEscapeButtonPressed;
+			s_currentAlert = ShowAlert(alertDialog);
+			options.SetResult(await s_currentAlert.ConfigureAwait(false));
+			s_currentAlert = null;
+		}
+
+		static async Task<bool> ShowAlert(ContentDialog alert)
+		{
+			ContentDialogResult result = await alert.ShowAsync();
+
+			return result == ContentDialogResult.Primary;
 		}
 
 		void ClearCommandBar()
